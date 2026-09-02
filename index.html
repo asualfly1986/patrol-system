@@ -1,0 +1,2900 @@
+<!DOCTYPE html>
+<html lang="th" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>PATROL MV & LV Tracking System | ระบบสำรวจและติดตามงานบำรุงรักษาระบบจำหน่าย (Realtime Cloud Sync)</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              crimson: '#EF4444',
+              amber: '#F59E0B',
+              emerald: '#10B981',
+              mv: '#6366F1',     /* Electric Violet for MV */
+              lv: '#06B6D4',     /* Cyan for LV */
+              dark: '#0F172A',
+              cardDark: '#1E293B',
+              borderDark: '#334155'
+            }
+          },
+          fontFamily: {
+            sans: ['Sarabun', 'Inter', 'system-ui', '-apple-system', 'sans-serif']
+          },
+          boxShadow: {
+            'glow-mv': '0 0 15px rgba(99, 102, 241, 0.4)',
+            'glow-lv': '0 0 15px rgba(6, 182, 212, 0.4)',
+            'glow-crimson': '0 0 15px rgba(239, 68, 68, 0.4)',
+            'glow-emerald': '0 0 15px rgba(16, 185, 129, 0.4)',
+            'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts: Sarabun & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Leaflet MarkerCluster -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- EXIF Reader (Supports JPG, PNG, HEIC) -->
+  <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+
+  <!-- Paho MQTT WebSocket Client for Zero-Config Realtime Mesh Cloud -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.05);
+    }
+    .dark ::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.03);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.4);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(100, 116, 139, 0.6);
+    }
+
+    /* Glassmorphism Classes */
+    .glass-panel {
+      background: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .light .glass-panel {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(226, 232, 240, 0.8);
+    }
+
+    /* Leaflet Marker Styling */
+    .custom-map-pin {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .custom-map-pin:hover {
+      transform: scale(1.15) translateY(-4px);
+      z-index: 9999 !important;
+    }
+
+    /* Live Crew Pulse Pin */
+    .live-crew-pin {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .live-crew-pulse {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      border-radius: 9999px;
+      background: rgba(59, 130, 246, 0.4);
+      animation: pulseGlow 1.8s infinite;
+    }
+    @keyframes pulseGlow {
+      0% { transform: scale(0.6); opacity: 0.9; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+
+    /* Custom Leaflet Popup */
+    .leaflet-popup-content-wrapper {
+      background: #0f172a !important;
+      color: #f8fafc !important;
+      border-radius: 14px !important;
+      padding: 0 !important;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5) !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      overflow: hidden;
+    }
+    .light .leaflet-popup-content-wrapper {
+      background: #ffffff !important;
+      color: #0f172a !important;
+      border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    }
+    .leaflet-popup-content {
+      margin: 0 !important;
+      line-height: 1.5;
+    }
+    .leaflet-popup-tip {
+      background: #0f172a !important;
+    }
+    .light .leaflet-popup-tip {
+      background: #ffffff !important;
+    }
+
+    /* Touch target min size */
+    .touch-target {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    /* Toast Notification Animation */
+    .toast-animate {
+      animation: slideDownToast 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes slideDownToast {
+      from { transform: translateY(-20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* Print Stylesheet for Report PDF */
+    @media print {
+      body {
+        background: white !important;
+        color: black !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .print-only {
+        display: block !important;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+      .print-card {
+        break-inside: avoid;
+        border: 1px solid #cbd5e1 !important;
+        background: white !important;
+        color: black !important;
+      }
+    }
+    @media screen {
+      .print-only {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-screen flex flex-col font-sans transition-colors duration-200 selection:bg-indigo-500 selection:text-white">
+
+  <!-- ================= FLOATING REALTIME TOAST CONTAINER ================= -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
+
+  <!-- ================= TOP HEADER ================= -->
+  <header class="no-print sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-3">
+      
+      <!-- Brand Logo & Title -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25 ring-2 ring-indigo-400/20 flex-shrink-0">
+          <i data-lucide="zap" class="w-6 h-6 stroke-[2.2]"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5 sm:gap-2">
+            <span class="font-extrabold text-lg sm:text-xl tracking-tight bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-400 bg-clip-text text-transparent">PATROL</span>
+            <span class="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">MV & LV</span>
+          </div>
+          <p class="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium truncate max-w-[150px] sm:max-w-xs">ระบบสำรวจ & บำรุงรักษาระบบจำหน่าย</p>
+        </div>
+      </div>
+
+      <!-- Realtime Status Indicator Badge & Project Switcher -->
+      <div class="flex items-center gap-1.5 sm:gap-3">
+        
+        <!-- REALTIME LIVE SYNC BUTTON & INDICATOR -->
+        <button id="btnOpenRealtimeModal" class="touch-target flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl border font-bold text-xs transition-all shadow-sm group" title="ตั้งค่าการเชื่อมต่อซิงค์ข้อมูลเรียลไทม์ (Live Cloud Sync)">
+          <span id="realtimeStatusDot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+          <div class="text-left hidden sm:block">
+            <div class="flex items-center gap-1">
+              <span id="realtimeStatusText" class="text-[11px] text-emerald-600 dark:text-emerald-400">REALTIME LIVE</span>
+              <i data-lucide="radio" class="w-3 h-3 text-emerald-500"></i>
+            </div>
+            <p id="realtimeRoomLabel" class="text-[9px] text-slate-400 font-normal">ห้อง: PEA-FEEDER-01</p>
+          </div>
+          <div class="sm:hidden text-[10px] font-bold text-emerald-500">LIVE</div>
+        </button>
+
+        <!-- Active Project Badge Button -->
+        <button id="btnOpenProjectModal" class="touch-target flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold transition-all">
+          <i data-lucide="folder-git-2" class="w-4 h-4 text-indigo-500"></i>
+          <span id="headerProjectName" class="max-w-[100px] sm:max-w-[160px] truncate">ฟีดเดอร์ 01 สายหลัก</span>
+          <span id="headerProjectStats" class="hidden md:inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-300">
+            รอ 0 / เสร็จ 0
+          </span>
+          <i data-lucide="chevron-down" class="w-3.5 h-3.5 opacity-60"></i>
+        </button>
+
+        <!-- Quick Backup / Restore Menu -->
+        <div class="hidden lg:flex items-center gap-1.5">
+          <button id="btnExportProject" title="สำรองไฟล์โครงการ (.patrol)" class="touch-target p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all flex items-center gap-1.5 text-xs font-medium">
+            <i data-lucide="download" class="w-4 h-4 text-cyan-500"></i>
+            <span>Backup</span>
+          </button>
+          <button id="btnImportProject" title="นำเข้าไฟล์โครงการ (.patrol / .json)" class="touch-target p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all flex items-center gap-1.5 text-xs font-medium">
+            <i data-lucide="upload" class="w-4 h-4 text-emerald-500"></i>
+            <span>Restore</span>
+          </button>
+          <input type="file" id="inputImportFile" accept=".patrol,.json" class="hidden" />
+        </div>
+
+        <!-- Theme Toggle -->
+        <button id="btnThemeToggle" title="สลับธีม สว่าง/มืด" class="touch-target p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all">
+          <i data-lucide="moon" class="w-4 h-4 hidden dark:block text-amber-400"></i>
+          <i data-lucide="sun" class="w-4 h-4 block dark:hidden text-amber-500"></i>
+        </button>
+
+        <!-- New Survey Quick Action (Desktop) -->
+        <button id="btnHeaderNewSurvey" class="hidden md:flex touch-target items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-semibold text-xs sm:text-sm shadow-md shadow-indigo-600/20 active:scale-95 transition-all">
+          <i data-lucide="plus-circle" class="w-4 h-4"></i>
+          <span>สำรวจจุดใหม่</span>
+        </button>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= REALTIME LIVE TICKER & NOTIFICATION BAR ================= -->
+  <div id="realtimeTickerBar" class="no-print bg-gradient-to-r from-indigo-950 via-slate-900 to-cyan-950 border-b border-indigo-500/20 py-1.5 px-3 sm:px-6 text-xs text-slate-300 flex items-center justify-between gap-2 overflow-hidden">
+    <div class="flex items-center gap-2 truncate">
+      <span class="flex h-2 w-2 relative flex-shrink-0">
+        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+        <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+      </span>
+      <span class="font-bold text-emerald-400 text-[11px] flex-shrink-0">กิจกรรมสด (Live Feed):</span>
+      <span id="realtimeLatestActivity" class="text-[11px] text-slate-300 truncate">พร้อมเชื่อมต่อระบบซิงค์ข้อมูลเรียลไทม์ภาคสนาม</span>
+    </div>
+    
+    <!-- Live Crew Tracking Toggle Shortcut -->
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <label class="flex items-center gap-1.5 cursor-pointer text-[11px] font-medium text-slate-300 hover:text-white">
+        <input type="checkbox" id="chkLiveCrewBroadcast" class="rounded text-indigo-600 focus:ring-0" />
+        <span>📍 แชร์พิกัดทีมสด</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- ================= STATS SUMMARY BANNER ================= -->
+  <section class="no-print bg-slate-100 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800/80 py-2.5 px-3 sm:px-6">
+    <div class="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-2 text-xs">
+      
+      <!-- Summary Badges -->
+      <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700">
+          <span class="text-slate-500 dark:text-slate-400">ทั้งหมด:</span>
+          <span id="statTotal" class="font-bold text-slate-800 dark:text-slate-100">0</span>
+        </div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900/50">
+          <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+          <span>รอดำเนินการ:</span>
+          <span id="statPending" class="font-bold">0</span>
+        </div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50">
+          <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+          <span>กำลังดำเนินการ:</span>
+          <span id="statInProgress" class="font-bold">0</span>
+        </div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span>แล้วเสร็จ:</span>
+          <span id="statCompleted" class="font-bold">0</span>
+        </div>
+      </div>
+
+      <!-- Voltage Counter & Missing GPS alert -->
+      <div class="flex items-center gap-2">
+        <span class="px-2 py-0.5 rounded-md font-bold text-[11px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+          MV: <b id="statMV">0</b>
+        </span>
+        <span class="px-2 py-0.5 rounded-md font-bold text-[11px] bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
+          LV: <b id="statLV">0</b>
+        </span>
+        <div id="missingGpsBanner" class="hidden flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/30">
+          <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-amber-500"></i>
+          <span>ขาดพิกัด: <b id="statMissingGps">0</b> จุด</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= MAIN WORKSPACE (SPLIT SCREEN ON DESKTOP) ================= -->
+  <main class="no-print flex-1 max-w-7xl w-full mx-auto p-2 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+    
+    <!-- LEFT PANEL: CONTROLS, FILTERS, LIST & TABLE (7 Cols on LG) -->
+    <div id="leftContainer" class="lg:col-span-7 flex flex-col gap-3 min-h-[500px]">
+      
+      <!-- Action Bar & Filter Bar -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-3 sm:p-4 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-3">
+        
+        <!-- Search & View Tabs -->
+        <div class="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
+          <!-- Search input -->
+          <div class="relative flex-1 min-w-[200px]">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <input type="text" id="inputSearch" placeholder="ค้นหารหัสเสา, หมวดหมู่งาน, หรือหมายเหตุ..." class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 placeholder-slate-400" />
+            <button id="btnClearSearch" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              <i data-lucide="x" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+
+          <!-- View Mode: Cards vs Table -->
+          <div class="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <button id="btnViewCards" class="touch-target px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm transition-all">
+              <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
+              <span>การ์ด</span>
+            </button>
+            <button id="btnViewTable" class="touch-target px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-all">
+              <i data-lucide="table" class="w-3.5 h-3.5"></i>
+              <span>ตาราง</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter Tabs -->
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-semibold no-scrollbar">
+          <button data-filter="all" class="filter-tab touch-target px-3 py-1.5 rounded-xl bg-indigo-600 text-white flex-shrink-0 transition-all">
+            ทั้งหมด (<span id="filterCountAll">0</span>)
+          </button>
+          <button data-filter="pending" class="filter-tab touch-target px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 flex-shrink-0 transition-all">
+            🔴 รอดำเนินการ (<span id="filterCountPending">0</span>)
+          </button>
+          <button data-filter="in_progress" class="filter-tab touch-target px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 flex-shrink-0 transition-all">
+            🟡 กำลังทำ (<span id="filterCountInProgress">0</span>)
+          </button>
+          <button data-filter="completed" class="filter-tab touch-target px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 flex-shrink-0 transition-all">
+            🟢 แล้วเสร็จ (<span id="filterCountCompleted">0</span>)
+          </button>
+          <button data-filter="missing_gps" class="filter-tab touch-target px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-950/40 flex-shrink-0 transition-all">
+            ⚠️ ขาดพิกัด GPS
+          </button>
+        </div>
+
+        <!-- Vehicle Type Filter & Export Bar -->
+        <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs flex-wrap">
+          <!-- Vehicle Selector -->
+          <div class="flex items-center gap-1.5">
+            <span class="text-slate-500 text-[11px] font-medium hidden sm:inline">กรองตามรถ:</span>
+            <select id="selectFilterVehicle" class="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs py-1 px-2 rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none">
+              <option value="">ยานพาหนะทั้งหมด</option>
+              <option value="bucket">🚜 รถกระเช้า (Bucket Truck)</option>
+              <option value="crane">🏗️ รถเครน (Boom Truck)</option>
+              <option value="truck6">🚚 รถบรรทุก 6 ล้อ</option>
+              <option value="pickup">🚙 รถกระบะตรวจการ</option>
+              <option value="climb">🧗‍♂️ ชุดเดินเท้า / ปีนเสา</option>
+            </select>
+          </div>
+
+          <!-- Export Actions -->
+          <div class="flex items-center gap-1.5">
+            <button id="btnExportCSV" class="touch-target px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1 transition-all" title="ดาวน์โหลดไฟล์ CSV สำหรับ Excel / Sheets">
+              <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-emerald-500"></i>
+              <span>Export CSV</span>
+            </button>
+            <button id="btnPrintReport" class="touch-target px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800 font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 transition-all" title="พิมพ์รายงานสรุปผลพร้อมภาพ ก่อน-หลัง">
+              <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+              <span>พิมพ์รายงานสรุป (PDF)</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- CARDS LIST VIEW -->
+      <div id="viewContainerCards" class="space-y-3 flex-1 overflow-y-auto max-h-[calc(100vh-320px)] pr-1">
+        <!-- Survey Cards will be rendered dynamically here -->
+      </div>
+
+      <!-- TABLE VIEW (HIDDEN BY DEFAULT) -->
+      <div id="viewContainerTable" class="hidden flex-1 overflow-x-auto max-h-[calc(100vh-320px)] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-1">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead class="bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 sticky top-0 font-semibold">
+            <tr>
+              <th class="p-2.5 rounded-l-lg">รหัสเสา / จุด</th>
+              <th class="p-2.5">ระดับแรงดัน</th>
+              <th class="p-2.5">หมวดหมู่งาน</th>
+              <th class="p-2.5">เครื่องมือ/รถ</th>
+              <th class="p-2.5">สถานะ</th>
+              <th class="p-2.5">พิกัด GPS</th>
+              <th class="p-2.5 text-right rounded-r-lg">การจัดการ</th>
+            </tr>
+          </thead>
+          <tbody id="tableSurveyBody" class="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+            <!-- Table rows rendered dynamically -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Empty State -->
+      <div id="emptySurveyState" class="hidden flex-col items-center justify-center p-12 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 text-center">
+        <div class="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-500 mb-3">
+          <i data-lucide="clipboard-list" class="w-8 h-8"></i>
+        </div>
+        <h3 class="text-base font-bold text-slate-800 dark:text-slate-200">ยังไม่มีข้อมูลจุดสำรวจ</h3>
+        <p class="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1 mb-4">เริ่มต้นด้วยการกดปุ่ม "สำรวจจุดใหม่" เพื่อเพิ่มจุดตรวจสอบแนวสายและถ่ายรูปหน้างาน</p>
+        <button id="btnEmptyNewSurvey" class="touch-target px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-indigo-600/20">
+          <i data-lucide="plus-circle" class="w-4 h-4"></i>
+          <span>บันทึกจุดสำรวจแรก</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- RIGHT PANEL: INTERACTIVE LIVE MAP (5 Cols on LG) -->
+    <div id="rightMapContainer" class="lg:col-span-5 flex flex-col gap-2 relative min-h-[420px] lg:min-h-[calc(100vh-170px)]">
+      <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-2 flex-1 flex flex-col overflow-hidden relative">
+        
+        <!-- Map Header & Layer Switcher -->
+        <div class="flex items-center justify-between px-2 py-1.5 border-b border-slate-100 dark:border-slate-800 text-xs">
+          <div class="flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
+            <i data-lucide="map-pin" class="w-4 h-4 text-indigo-500"></i>
+            <span>แผนที่แสดงจุดพิกัดงาน (Live Map)</span>
+          </div>
+
+          <div class="flex items-center gap-1">
+            <!-- Basemap selector -->
+            <select id="selectBasemap" class="bg-slate-100 dark:bg-slate-800 text-[11px] py-1 px-2 rounded-lg border border-slate-200 dark:border-slate-700 font-medium text-slate-700 dark:text-slate-300">
+              <option value="osm">แผนที่ถนน (OSM)</option>
+              <option value="satellite">ภาพดาวเทียม (Satellite)</option>
+              <option value="dark">ธีมมืด (Carto Dark)</option>
+            </select>
+
+            <button id="btnFitBounds" title="รวมจุดทั้งหมดบนจอ" class="touch-target p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300">
+              <i data-lucide="maximize" class="w-3.5 h-3.5"></i>
+            </button>
+            <button id="btnLocateUser" title="ตำแหน่งปัจจุบันของคุณ" class="touch-target p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400">
+              <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Leaflet Map Canvas -->
+        <div id="mainMap" class="w-full flex-1 rounded-xl overflow-hidden mt-1 z-10"></div>
+
+        <!-- Legend Overlay -->
+        <div class="absolute bottom-4 left-4 z-20 glass-panel rounded-xl p-2.5 text-[11px] shadow-lg flex flex-col gap-1.5 pointer-events-auto border border-white/20">
+          <div class="font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between gap-4">
+            <span>คำอธิบายสัญลักษณ์</span>
+            <span class="text-[10px] text-slate-400">MV/LV</span>
+          </div>
+          <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-slate-600 dark:text-slate-300 font-medium">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-red-400/30"></span>
+              <span>รอดำเนินการ</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-amber-400/30"></span>
+              <span>กำลังทำ</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-400/30"></span>
+              <span>แล้วเสร็จ</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="px-1 py-0.2 rounded bg-indigo-500 text-white font-bold text-[9px]">MV</span>
+              <span class="px-1 py-0.2 rounded bg-cyan-500 text-slate-900 font-bold text-[9px]">LV</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ================= MOBILE BOTTOM NAVIGATION (Mobile-First Ergonomic) ================= -->
+  <nav class="no-print lg:hidden sticky bottom-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-3 py-1 shadow-lg">
+    <div class="grid grid-cols-4 gap-1 max-w-md mx-auto">
+      
+      <button id="mobNavProjects" class="touch-target flex flex-col items-center justify-center py-1 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400">
+        <i data-lucide="folder-git-2" class="w-5 h-5"></i>
+        <span class="text-[10px] font-medium mt-0.5">โครงการ</span>
+      </button>
+
+      <button id="mobNavMap" class="touch-target flex flex-col items-center justify-center py-1 text-indigo-600 dark:text-indigo-400 font-bold">
+        <i data-lucide="map" class="w-5 h-5"></i>
+        <span class="text-[10px] mt-0.5">แผนที่</span>
+      </button>
+
+      <!-- Center Floating Plus Button -->
+      <button id="mobNavNew" class="touch-target flex flex-col items-center justify-center py-1 text-indigo-600 dark:text-indigo-400 group">
+        <div class="w-10 h-10 -mt-5 rounded-full bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-indigo-600/30 group-active:scale-95 transition-transform">
+          <i data-lucide="plus" class="w-6 h-6 stroke-[2.5]"></i>
+        </div>
+        <span class="text-[10px] font-bold mt-0.5 text-indigo-600 dark:text-indigo-400">สำรวจใหม่</span>
+      </button>
+
+      <button id="mobNavList" class="touch-target flex flex-col items-center justify-center py-1 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400">
+        <i data-lucide="list-checks" class="w-5 h-5"></i>
+        <span class="text-[10px] font-medium mt-0.5">ตารางงาน</span>
+      </button>
+
+    </div>
+  </nav>
+
+  <!-- ================= MODAL: REALTIME CLOUD & LIVE SYNC HUB ================= -->
+  <div id="modalRealtimeHub" class="no-print fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-xl rounded-t-3xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+      
+      <!-- Hub Header -->
+      <div class="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-indigo-900/40 via-slate-800/40 to-cyan-900/40">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-400 text-white flex items-center justify-center shadow-lg shadow-indigo-600/30">
+            <i data-lucide="radio" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <span>ศูนย์เชื่อมต่อข้อมูลเรียลไทม์</span>
+              <span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-400 font-bold">Live Sync</span>
+            </h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">ซิงค์จุดสำรวจและภาพ Before/After ข้ามอุปกรณ์สดทันที</p>
+          </div>
+        </div>
+        <button id="btnCloseRealtimeModal" class="touch-target p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Hub Content -->
+      <div class="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
+        
+        <!-- Mode 1: Zero-Config Live Room (P2P / Live Channel) -->
+        <div class="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/50 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+              <span class="font-bold text-sm text-slate-800 dark:text-slate-100">Live Team Sync Room (ห้องซิงค์ทีมงานสด)</span>
+            </div>
+            <span class="px-2 py-0.5 rounded bg-indigo-600 text-white font-bold text-[10px]">แนะนำใช้งาน</span>
+          </div>
+          <p class="text-slate-600 dark:text-slate-300 text-xs">
+            เพียงพิมพ์รหัสห้องเดียวกันบนมือถือทุกเครื่อง ทีมภาคสนามและหัวหน้างานที่ห้องควบคุมจะเห็นหมุด, การปิดงาน และภาพ Before/After อัปเดตทันทีแบบเสี้ยววินาที!
+          </p>
+
+          <div class="space-y-2 pt-1">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">รหัสห้องซิงค์ (Room Code)</label>
+                <input type="text" id="inputRealtimeRoom" value="PEA-FEEDER-01" class="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono font-bold text-indigo-500" placeholder="เช่น PEA-HOTLINE-01" />
+              </div>
+              <div>
+                <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">ชื่อผู้ใช้งาน / ทีมงาน (Your Name/Crew)</label>
+                <input type="text" id="inputRealtimeCrewName" value="ทีมฮอทไลน์ 01" class="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold" placeholder="เช่น ช่างวิชัย (รถกระเช้า)" />
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 pt-2">
+              <button type="button" id="btnConnectRealtimeRoom" class="touch-target flex-1 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2">
+                <i data-lucide="wifi" class="w-4 h-4"></i>
+                <span>เชื่อมต่อห้องนี้ทันที</span>
+              </button>
+              <button type="button" id="btnShareRealtimeLink" class="touch-target py-2.5 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold flex items-center gap-1.5" title="คัดลอกลิงก์ห้องให้ทีมงาน">
+                <i data-lucide="share-2" class="w-4 h-4"></i>
+                <span>แชร์ลิงก์</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Crew Tracker Settings -->
+        <div class="p-4 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              <i data-lucide="navigation" class="w-4 h-4 text-cyan-500"></i>
+              <span>การส่งพิกัดรถ/ทีมงานสด (Live Crew Tracking)</span>
+            </span>
+            <span id="crewBroadcastStatusBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-500">ปิดอยู่</span>
+          </div>
+          <p class="text-slate-500 dark:text-slate-400 text-[11px]">
+            เมื่อเปิดใช้งาน ระบบจะส่งพิกัด GPS ของคุณแบบเรียลไทม์ไปยังแผนที่ของเพื่อนร่วมทีมและหัวหน้างานทุกๆ 8 วินาที
+          </p>
+        </div>
+
+        <!-- Live Activity Log -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-slate-700 dark:text-slate-300">บันทึกกิจกรรมเรียลไทม์ล่าสุด (Live Activity Stream)</span>
+            <span id="realtimePeerCount" class="text-[10px] text-emerald-500 font-bold">🟢 เชื่อมต่อสด</span>
+          </div>
+          <div id="realtimeActivityList" class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 max-h-36 overflow-y-auto space-y-1.5 font-mono text-[11px] text-slate-600 dark:text-slate-400">
+            <div>[ระบบ] เริ่มต้นระบบจัดเก็บข้อมูลเรียลไทม์พร้อมทำงาน</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Hub Footer -->
+      <div class="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between">
+        <span class="text-[11px] text-slate-400">รองรับทั้งออฟไลน์และออนไลน์อัตโนมัติ</span>
+        <button type="button" id="btnDoneRealtimeHub" class="touch-target px-6 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs">
+          ตกลง
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= MODAL: SURVEY FORM (NEW / EDIT) ================= -->
+  <div id="modalSurveyForm" class="no-print fixed inset-0 z-50 hidden bg-slate-950/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-t-3xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+      
+      <!-- Modal Header -->
+      <div class="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/40">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+            <i data-lucide="clipboard-pen" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 id="formModalTitle" class="font-bold text-base text-slate-900 dark:text-slate-100">บันทึกข้อมูลสำรวจจุดใหม่</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">กรอกรายละเอียดสภาพแนวสายและถ่ายภาพหน้างาน (ซิงค์สดอัตโนมัติ)</p>
+          </div>
+        </div>
+        <button id="btnCloseSurveyModal" class="touch-target p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body (Form Fields) -->
+      <form id="formSurvey" class="p-5 space-y-4 overflow-y-auto flex-1">
+        <input type="hidden" id="formSurveyId" value="" />
+
+        <!-- 1. Voltage Selection (Pill Buttons) -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+            ระดับแรงดันไฟฟ้า (Voltage Level) <span class="text-red-500">*</span>
+          </label>
+          <div class="grid grid-cols-2 gap-3">
+            <button type="button" id="btnVoltageMV" class="touch-target flex items-center justify-center gap-2 p-3 rounded-xl border-2 font-bold text-sm transition-all border-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 ring-2 ring-indigo-500/20">
+              <span class="w-3 h-3 rounded-full bg-indigo-600"></span>
+              <span>⚡ MV - แรงสูง (22-33 kV)</span>
+            </button>
+            <button type="button" id="btnVoltageLV" class="touch-target flex items-center justify-center gap-2 p-3 rounded-xl border-2 font-bold text-sm transition-all border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+              <span class="w-3 h-3 rounded-full bg-slate-400"></span>
+              <span>💡 LV - แรงต่ำ (230-400 V)</span>
+            </button>
+          </div>
+          <input type="hidden" id="formVoltage" value="MV" />
+        </div>
+
+        <!-- 2. Work Category -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+            หมวดหมู่งานบำรุงรักษา (Category) <span class="text-red-500">*</span>
+          </label>
+          <select id="formCategory" class="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none" required>
+            <option value="ต้นไม้ใกล้แนวสาย">🌳 ต้นไม้ใกล้แนวสาย (เสี่ยงแตะสายไฟ)</option>
+            <option value="กิ่งไม้พาดสาย">🌿 กิ่งไม้พาดสาย / เถาวัลย์พันสาย</option>
+            <option value="สายหย่อน">〰️ สายหย่อน / ระยะดิ่งไม่ได้มาตรฐาน</option>
+            <option value="เสาเอียง/ชำรุด">📐 เสาเอียง / ฐานรากทรุด / เสาชำรุด</option>
+            <option value="ลูกถ้วย/อุปกรณ์ตัดตอน">⚡ ลูกถ้วยแตก / คัทเอาท์ / ดรอปเอาท์ชำรุด</option>
+            <option value="สายสื่อสาร">📡 สายสื่อสารรกรุงรัง / ตกห้อยขวางทาง</option>
+            <option value="หม้อแปลง/อุปกรณ์ระบบจำหน่าย">🔌 หม้อแปลง / อุปกรณ์ป้องกันระบบจำหน่าย</option>
+            <option value="อื่นๆ">📝 อื่นๆ (ระบุในหมายเหตุ)</option>
+          </select>
+        </div>
+
+        <!-- 3. Pole ID & Reference Point -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              รหัสเสา / หมายเลขเสา (Pole ID) <span class="text-red-500">*</span>
+            </label>
+            <input type="text" id="formPoleId" placeholder="เช่น PEA-B04-012 หรือ ต้นที่ 5" class="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" required />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              จุดอ้างอิง / สถานที่ใกล้เคียง
+            </label>
+            <input type="text" id="formLandmark" placeholder="เช่น หน้าวัดหนองใหญ่, ปากซอย 4" class="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+          </div>
+        </div>
+
+        <!-- 4. Required Vehicles & Tools (Multi-Select Badges) -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+            ประเภทรถและเครื่องมือที่ต้องใช้ (Vehicle / Equipment)
+          </label>
+          <div class="flex flex-wrap gap-2" id="vehicleBadgeContainer">
+            <button type="button" data-vehicle="bucket" class="vehicle-pill touch-target px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all">
+              <span>🚜</span> รถกระเช้า (Bucket)
+            </button>
+            <button type="button" data-vehicle="crane" class="vehicle-pill touch-target px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all">
+              <span>🏗️</span> รถเครน (Boom Truck)
+            </button>
+            <button type="button" data-vehicle="truck6" class="vehicle-pill touch-target px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all">
+              <span>🚚</span> รถ 6 ล้อ บรรทุกกิ่งไม้
+            </button>
+            <button type="button" data-vehicle="pickup" class="vehicle-pill touch-target px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all">
+              <span>🚙</span> รถกระบะตรวจการ
+            </button>
+            <button type="button" data-vehicle="climb" class="vehicle-pill touch-target px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all">
+              <span>🧗‍♂️</span> ชุดเดินเท้า / ปีนเสา
+            </button>
+          </div>
+        </div>
+
+        <!-- 5. Before Photo Upload & EXIF GPS Extraction -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="text-xs font-bold text-slate-700 dark:text-slate-300">
+              ภาพถ่ายก่อนดำเนินการ (Before Photo) <span class="text-red-500">*</span>
+            </label>
+            <span class="text-[11px] text-indigo-500 font-medium">แกะ GPS อัตโนมัติจากไฟล์</span>
+          </div>
+
+          <!-- Upload Dropzone -->
+          <div id="beforePhotoDropzone" class="relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-2xl p-4 text-center cursor-pointer transition-all bg-slate-50/50 dark:bg-slate-800/30">
+            <input type="file" id="inputBeforePhoto" accept="image/*,.heic,.heif" capture="environment" class="hidden" />
+            
+            <div id="beforePhotoPlaceholder" class="flex flex-col items-center justify-center py-3">
+              <div class="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-2 shadow-inner">
+                <i data-lucide="camera" class="w-6 h-6"></i>
+              </div>
+              <p class="text-xs font-bold text-slate-700 dark:text-slate-200">แตะเพื่อถ่ายรูป หรือเลือกรูปจากอัลบั้ม</p>
+              <p class="text-[11px] text-slate-400 mt-0.5">รองรับไฟล์ JPG, PNG, และ HEIC จาก iPhone</p>
+            </div>
+
+            <div id="beforePhotoPreviewContainer" class="hidden relative rounded-xl overflow-hidden group">
+              <img id="beforePhotoPreview" src="" alt="Before preview" class="w-full max-h-56 object-contain bg-black/20 rounded-xl" />
+              <button type="button" id="btnRemoveBeforePhoto" class="absolute top-2 right-2 p-1.5 rounded-full bg-red-600 text-white shadow-lg opacity-90 hover:opacity-100">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. GPS Location Resolver Box -->
+        <div class="p-3 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i data-lucide="map-pin" class="w-4 h-4 text-indigo-500"></i>
+              <span class="text-xs font-bold text-slate-700 dark:text-slate-200">พิกัดทางภูมิศาสตร์ (GPS Coordinates)</span>
+            </div>
+            <span id="gpsStatusBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+              ⚠️ ยังไม่มีพิกัด
+            </span>
+          </div>
+
+          <!-- Lat & Lng Input Row -->
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] font-medium text-slate-500">Latitude (ละติจูด)</label>
+              <input type="number" step="any" id="formLat" placeholder="เช่น 13.7563" class="w-full p-2 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono" />
+            </div>
+            <div>
+              <label class="text-[10px] font-medium text-slate-500">Longitude (ลองจิจูด)</label>
+              <input type="number" step="any" id="formLng" placeholder="เช่น 100.5018" class="w-full p-2 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono" />
+            </div>
+          </div>
+
+          <!-- GPS Action Buttons -->
+          <div class="flex items-center gap-2 pt-1">
+            <button type="button" id="btnGetDeviceGps" class="touch-target flex-1 py-2 px-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all">
+              <i data-lucide="crosshair" class="w-4 h-4"></i>
+              <span>ดึงพิกัดปัจจุบันมือถือ</span>
+            </button>
+
+            <button type="button" id="btnOpenMapPicker" class="touch-target flex-1 py-2 px-3 rounded-xl bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 dark:hover:bg-cyan-900/60 border border-cyan-200 dark:border-cyan-800 text-cyan-700 dark:text-cyan-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all">
+              <i data-lucide="map" class="w-4 h-4"></i>
+              <span>จิ้มเลือกพิกัดบนแผนที่</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 7. Status & Notes -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              สถานะเริ่มต้น (Initial Status)
+            </label>
+            <select id="formStatus" class="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-semibold focus:outline-none">
+              <option value="pending">🔴 รอดำเนินการ (Pending)</option>
+              <option value="in_progress">🟡 กำลังดำเนินการ (In Progress)</option>
+              <option value="completed">🟢 แล้วเสร็จ (Completed)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              หมายเหตุ / สภาพหน้างาน
+            </label>
+            <input type="text" id="formNotes" placeholder="เช่น กิ่งจามจุรีใกล้สาย 50 ซม. เสี่ยงลัดวงจร" class="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs focus:outline-none" />
+          </div>
+        </div>
+
+        <!-- Form Submit Footer -->
+        <div class="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
+          <button type="button" id="btnCancelSurvey" class="touch-target px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold text-xs hover:bg-slate-100 dark:hover:bg-slate-800">
+            ยกเลิก
+          </button>
+          <button type="submit" id="btnSubmitSurvey" class="touch-target px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 active:scale-95 transition-all">
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span>บันทึก & ซิงค์สด (Realtime)</span>
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: INTERACTIVE PIN PICKER ON MAP ================= -->
+  <div id="modalMapPicker" class="no-print fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-md flex flex-col p-2 sm:p-6">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-4xl mx-auto flex-1 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden">
+      
+      <!-- Picker Top Bar -->
+      <div class="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-800/40 flex-wrap sm:flex-nowrap">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-500 flex items-center justify-center font-bold">
+            <i data-lucide="crosshair" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200">ระบุพิกัดเสาไฟบนแผนที่</h4>
+            <p class="text-[11px] text-slate-500">แตะบนแผนที่ หรือลากหมุดไปยังตำแหน่งเสาจริง</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="btnPickerCurrentGps" class="touch-target px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-bold flex items-center gap-1">
+            <i data-lucide="navigation" class="w-3.5 h-3.5"></i>
+            <span>ตำแหน่งฉัน</span>
+          </button>
+          <button id="btnCloseMapPicker" class="touch-target p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Picker Map Canvas -->
+      <div class="relative flex-1 w-full bg-slate-200 dark:bg-slate-950">
+        <div id="pickerMap" class="w-full h-full"></div>
+        
+        <!-- Live Coordinates HUD overlay -->
+        <div class="absolute bottom-4 left-4 right-4 sm:right-auto z-[1000] glass-panel rounded-2xl p-3 text-xs shadow-xl border border-white/20 flex items-center justify-between gap-4">
+          <div>
+            <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">พิกัดที่เลือก</span>
+            <span id="pickerCoordDisplay" class="font-mono font-bold text-indigo-400 text-sm">13.756300, 100.501800</span>
+          </div>
+          <button id="btnConfirmPickerCoord" class="touch-target px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 active:scale-95 transition-all">
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span>ยืนยันพิกัดนี้</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= MODAL: JOB CLOSURE & BEFORE/AFTER VIEWER ================= -->
+  <div id="modalJobClosure" class="no-print fixed inset-0 z-50 hidden bg-slate-950/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-3xl rounded-t-3xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+      
+      <!-- Closure Header -->
+      <div class="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-emerald-500/10">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30">
+            <i data-lucide="check-check" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <span>ปิดงาน / อัปเดตงานแล้วเสร็จ (Live Sync)</span>
+              <span id="closurePoleBadge" class="px-2 py-0.5 rounded-md text-xs bg-indigo-500/20 text-indigo-400 font-mono">PEA-001</span>
+            </h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">เปรียบเทียบภาพ Before & After เพื่อส่งมอบงานและปรับสถานะแบบเรียลไทม์</p>
+          </div>
+        </div>
+        <button id="btnCloseJobClosure" class="touch-target p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Closure Body -->
+      <form id="formJobClosure" class="p-5 space-y-4 overflow-y-auto flex-1">
+        <input type="hidden" id="closureSurveyId" value="" />
+
+        <!-- Side-by-Side Comparison Container -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          
+          <!-- Before Photo Display -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs font-bold">
+              <span class="text-red-500">🔴 ภาพก่อนทำ (Before Photo)</span>
+              <span id="closureBeforeDate" class="text-[10px] text-slate-400 font-normal">--</span>
+            </div>
+            <div class="h-52 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 overflow-hidden flex items-center justify-center">
+              <img id="closureBeforeImg" src="" alt="Before Photo" class="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform" />
+            </div>
+          </div>
+
+          <!-- After Photo Upload & Display -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs font-bold">
+              <span class="text-emerald-500">🟢 ภาพหลังทำ (After Photo)</span>
+              <span class="text-[10px] text-indigo-400 font-normal">อัปโหลดภาพเสร็จสิ้น</span>
+            </div>
+
+            <div id="closureAfterDropzone" class="h-52 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 bg-slate-50 dark:bg-slate-800/40 p-2 flex flex-col items-center justify-center cursor-pointer transition-all relative overflow-hidden">
+              <input type="file" id="inputAfterPhoto" accept="image/*,.heic,.heif" capture="environment" class="hidden" />
+              
+              <div id="closureAfterPlaceholder" class="text-center p-3">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto mb-2">
+                  <i data-lucide="camera-plus" class="w-5 h-5"></i>
+                </div>
+                <p class="text-xs font-bold text-slate-700 dark:text-slate-200">ถ่ายรูปผลงานแล้วเสร็จ</p>
+                <p class="text-[10px] text-slate-400 mt-0.5">แตะเพื่อถ่ายรูปหรือเลือกรูป</p>
+              </div>
+
+              <div id="closureAfterPreviewContainer" class="hidden w-full h-full relative group">
+                <img id="closureAfterImg" src="" alt="After Preview" class="w-full h-full object-cover rounded-xl" />
+                <button type="button" id="btnRemoveAfterPhoto" class="absolute top-2 right-2 p-1.5 rounded-full bg-red-600 text-white shadow-lg">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Closure Details & Remarks -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              วันและเวลาที่แล้วเสร็จ (Completion Date)
+            </label>
+            <input type="datetime-local" id="closureCompletedDate" class="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none" required />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              หมายเหตุการปิดงาน / รายงานผล
+            </label>
+            <input type="text" id="closureNotes" placeholder="เช่น ตัดแต่งกิ่งไม้เรียบร้อย ระยะห่าง 2.5 ม." class="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+          </div>
+        </div>
+
+        <!-- Closure Submit Buttons -->
+        <div class="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
+          <button type="button" id="btnCancelClosure" class="touch-target px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-semibold text-xs hover:bg-slate-100 dark:hover:bg-slate-800">
+            ปิด
+          </button>
+          <button type="submit" id="btnConfirmJobClosure" class="touch-target px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 active:scale-95 transition-all">
+            <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+            <span>ยืนยันปิดงาน (Broadcast Realtime)</span>
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: PROJECT SWITCHER & MANAGER ================= -->
+  <div id="modalProjects" class="no-print fixed inset-0 z-50 hidden bg-slate-950/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-lg rounded-t-3xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      
+      <!-- Modal Header -->
+      <div class="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+            <i data-lucide="folders" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base text-slate-900 dark:text-slate-100">จัดการโครงการสำรวจ</h3>
+            <p class="text-xs text-slate-500">สลับโปรเจกต์ ฟีดเดอร์ หรือสร้างชุดงานใหม่</p>
+          </div>
+        </div>
+        <button id="btnCloseProjectModal" class="touch-target p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Projects List -->
+      <div class="p-4 space-y-2 overflow-y-auto flex-1 max-h-80" id="projectListContainer">
+        <!-- Project items rendered dynamically -->
+      </div>
+
+      <!-- Create New Project Section -->
+      <div class="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40">
+        <form id="formNewProject" class="space-y-2">
+          <label class="block text-xs font-bold text-slate-700 dark:text-slate-300">
+            + สร้างโครงการ / ฟีดเดอร์ใหม่
+          </label>
+          <div class="flex items-center gap-2">
+            <input type="text" id="inputNewProjectName" placeholder="เช่น ฟีดเดอร์ 02 ทางหลวง 201" class="flex-1 p-2.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500" required />
+            <button type="submit" class="touch-target px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 flex-shrink-0">
+              สร้าง
+            </button>
+          </div>
+        </form>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= PRINTABLE SUMMARY REPORT TEMPLATE (PRINT ONLY) ================= -->
+  <div id="printReportContainer" class="print-only p-8 max-w-5xl mx-auto bg-white text-slate-900">
+    <!-- Header -->
+    <div class="border-b-2 border-slate-900 pb-4 mb-6 flex items-start justify-between">
+      <div>
+        <h1 class="text-2xl font-black tracking-tight text-slate-900">รายงานสรุปผลการสำรวจและบำรุงรักษาระบบจำหน่าย</h1>
+        <p class="text-sm font-semibold text-slate-600">PATROL MV & LV Maintenance Tracking Report</p>
+      </div>
+      <div class="text-right text-xs">
+        <p class="font-bold text-slate-800">โครงการ: <span id="printProjectName">ฟีดเดอร์ 01</span></p>
+        <p class="text-slate-500">วันที่ออกรายงาน: <span id="printReportDate">--</span></p>
+      </div>
+    </div>
+
+    <!-- Summary Stats Table for Supervisor -->
+    <div class="grid grid-cols-4 gap-4 mb-6 text-center">
+      <div class="p-3 border border-slate-300 rounded-lg">
+        <div class="text-xs text-slate-500">จุดสำรวจทั้งหมด</div>
+        <div id="printStatTotal" class="text-xl font-bold">0</div>
+      </div>
+      <div class="p-3 border border-slate-300 rounded-lg">
+        <div class="text-xs text-red-600 font-bold">รอดำเนินการ</div>
+        <div id="printStatPending" class="text-xl font-bold text-red-600">0</div>
+      </div>
+      <div class="p-3 border border-slate-300 rounded-lg">
+        <div class="text-xs text-amber-600 font-bold">กำลังดำเนินการ</div>
+        <div id="printStatInProgress" class="text-xl font-bold text-amber-600">0</div>
+      </div>
+      <div class="p-3 border border-slate-300 rounded-lg">
+        <div class="text-xs text-emerald-600 font-bold">แล้วเสร็จ</div>
+        <div id="printStatCompleted" class="text-xl font-bold text-emerald-600">0</div>
+      </div>
+    </div>
+
+    <!-- Survey Points Comparison Grid -->
+    <div id="printItemsContainer" class="space-y-6">
+      <!-- Print cards rendered dynamically -->
+    </div>
+
+    <!-- Signature Block -->
+    <div class="mt-12 pt-8 border-t border-slate-300 grid grid-cols-2 gap-8 text-center text-xs page-break">
+      <div>
+        <p class="mb-14">ลงชื่อ ........................................................... ผู้สำรวจ/ผู้ควบคุมงาน</p>
+        <p class="font-bold">( ........................................................... )</p>
+        <p class="text-slate-500">ตำแหน่ง: วิศวกร / ช่างชำนาญการ</p>
+      </div>
+      <div>
+        <p class="mb-14">ลงชื่อ ........................................................... ผู้อนุมัติ/หัวหน้าแผนก</p>
+        <p class="font-bold">( ........................................................... )</p>
+        <p class="text-slate-500">ตำแหน่ง: หัวหน้าแผนกบำรุงรักษาระบบจำหน่าย</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= APPLICATION SCRIPTS ================= -->
+  <script>
+    /* =========================================================
+       1. CORE STATE & INDEXEDDB STORAGE ENGINE
+       ========================================================= */
+    const DB_NAME = 'PatrolTrackingDB';
+    const DB_VERSION = 1;
+    let dbInstance = null;
+
+    const AppState = {
+      projects: [],
+      currentProjectId: 'default-proj',
+      surveys: [],
+      activeFilter: 'all',
+      searchQuery: '',
+      vehicleFilter: '',
+      viewMode: 'cards', // 'cards' | 'table'
+      currentTempLocation: null,
+      selectedVehicles: new Set(['bucket']),
+      tempBeforePhotoBase64: null,
+      tempAfterPhotoBase64: null,
+      editingSurveyId: null,
+      map: null,
+      markerClusterGroup: null,
+      pickerMap: null,
+      pickerMarker: null,
+      markersMap: new Map(),
+
+      // Realtime State
+      clientId: 'crew-' + Math.random().toString(36).substr(2, 6),
+      roomCode: localStorage.getItem('patrol_room') || 'PEA-FEEDER-01',
+      crewName: localStorage.getItem('patrol_crew') || 'ทีมฮอทไลน์ 01',
+      realtimeStatus: 'disconnected', // 'connected' | 'connecting' | 'disconnected'
+      mqttClient: null,
+      broadcastChannel: null,
+      liveCrewMarkers: new Map(),
+      isBroadcastingGps: false,
+      gpsWatchId: null
+    };
+
+    // Open & Initialize IndexedDB
+    function initDatabase() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onupgradeneeded = (event) => {
+          const db = event.target.result;
+          if (!db.objectStoreNames.contains('projects')) {
+            const projectStore = db.createObjectStore('projects', { keyPath: 'id' });
+            projectStore.createIndex('name', 'name', { unique: false });
+          }
+          if (!db.objectStoreNames.contains('surveys')) {
+            const surveyStore = db.createObjectStore('surveys', { keyPath: 'id' });
+            surveyStore.createIndex('projectId', 'projectId', { unique: false });
+            surveyStore.createIndex('status', 'status', { unique: false });
+          }
+        };
+
+        request.onsuccess = (event) => {
+          dbInstance = event.target.result;
+          resolve(dbInstance);
+        };
+
+        request.onerror = (event) => {
+          console.error('IndexedDB Error:', event.target.errorCode);
+          reject(event.target.error);
+        };
+      });
+    }
+
+    // Generic DB Helpers
+    function dbGetAll(storeName) {
+      return new Promise((resolve, reject) => {
+        const tx = dbInstance.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    function dbPut(storeName, item) {
+      return new Promise((resolve, reject) => {
+        const tx = dbInstance.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const req = store.put(item);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    function dbDelete(storeName, key) {
+      return new Promise((resolve, reject) => {
+        const tx = dbInstance.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const req = store.delete(key);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    /* =========================================================
+       2. REALTIME ENGINE: MULTI-TAB & CLOUD WEBSOCKET MESH
+       ========================================================= */
+    function initRealtimeEngine() {
+      // 1. Cross-Tab BroadcastChannel (0ms local multi-tab real-time)
+      if ('BroadcastChannel' in window) {
+        AppState.broadcastChannel = new BroadcastChannel('patrol_realtime_mesh');
+        AppState.broadcastChannel.onmessage = (event) => {
+          handleIncomingRealtimeMessage(event.data, 'tab');
+        };
+      }
+
+      // 2. Cloud WebSocket / MQTT Realtime Connection
+      connectToRealtimeCloud();
+    }
+
+    function connectToRealtimeCloud() {
+      const room = AppState.roomCode.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '') || 'PEA-FEEDER-01';
+      AppState.roomCode = room;
+      localStorage.setItem('patrol_room', room);
+
+      const topic = `patrol_system/rooms/${room}/events`;
+      setRealtimeUIStatus('connecting', `กำลังเชื่อมต่อห้อง ${room}...`);
+
+      if (typeof Paho !== 'undefined' && Paho.MQTT) {
+        try {
+          const brokerHost = 'broker.hivemq.com';
+          const brokerPort = 8884; // Secure WSS port
+          const clientId = 'Patrol_' + AppState.clientId + '_' + Math.floor(Math.random() * 1000);
+
+          if (AppState.mqttClient) {
+            try { AppState.mqttClient.disconnect(); } catch (e) {}
+          }
+
+          const client = new Paho.MQTT.Client(brokerHost, Number(brokerPort), '/mqtt', clientId);
+
+          client.onConnectionLost = (responseObject) => {
+            if (responseObject.errorCode !== 0) {
+              console.warn('Realtime connection lost:', responseObject.errorMessage);
+              setRealtimeUIStatus('disconnected', 'การเชื่อมต่อขัดข้อง (กำลังต่อใหม่)');
+              setTimeout(connectToRealtimeCloud, 5000);
+            }
+          };
+
+          client.onMessageArrived = (message) => {
+            try {
+              const payload = JSON.parse(message.payloadString);
+              if (payload.senderId !== AppState.clientId) {
+                handleIncomingRealtimeMessage(payload, 'cloud');
+              }
+            } catch (err) {
+              console.error('Error parsing realtime message:', err);
+            }
+          };
+
+          client.connect({
+            useSSL: true,
+            timeout: 10,
+            keepAliveInterval: 30,
+            onSuccess: () => {
+              client.subscribe(topic, { qos: 1 });
+              AppState.mqttClient = client;
+              setRealtimeUIStatus('connected', `เชื่อมต่อสด: ${room}`);
+              addRealtimeActivityLog(`เชื่อมต่อห้องสด [${room}] เรียบร้อยแล้ว`);
+              broadcastRealtimeEvent('USER_JOIN', { user: AppState.crewName, time: new Date().toISOString() });
+            },
+            onFailure: (err) => {
+              console.warn('MQTT Connection failed, fallback to local mesh:', err);
+              setRealtimeUIStatus('connected', `Local Mesh (${room})`);
+              addRealtimeActivityLog('กำลังใช้งานโหมด Local Mesh (และบันทึกลงเครื่องอัตโนมัติ)');
+            }
+          });
+        } catch (e) {
+          console.warn('MQTT Init notice:', e);
+          setRealtimeUIStatus('connected', `Local Mesh (${room})`);
+        }
+      } else {
+        setRealtimeUIStatus('connected', 'Local Mesh');
+      }
+    }
+
+    // Broadcast Realtime Events (Survey Added, Updated, Closed, Live GPS)
+    function broadcastRealtimeEvent(action, data) {
+      const payload = {
+        action: action,
+        senderId: AppState.clientId,
+        crewName: AppState.crewName,
+        room: AppState.roomCode,
+        timestamp: new Date().toISOString(),
+        data: data
+      };
+
+      // 1. Send via local BroadcastChannel (Tabs)
+      if (AppState.broadcastChannel) {
+        AppState.broadcastChannel.postMessage(payload);
+      }
+
+      // 2. Send via Cloud MQTT WebSocket
+      if (AppState.mqttClient && AppState.mqttClient.isConnected()) {
+        const topic = `patrol_system/rooms/${AppState.roomCode}/events`;
+        const message = new Paho.MQTT.Message(JSON.stringify(payload));
+        message.destinationName = topic;
+        message.qos = 1;
+        AppState.mqttClient.send(message);
+      }
+    }
+
+    // Handle Incoming Realtime Push Messages
+    async function handleIncomingRealtimeMessage(payload, source) {
+      if (!payload || !payload.action) return;
+
+      const { action, crewName, data } = payload;
+
+      if (action === 'SURVEY_SAVE' && data) {
+        await dbPut('surveys', data);
+        await reloadAllData();
+        renderUI();
+
+        showRealtimeToast(`⚡ ${crewName || 'ทีมงาน'} บันทึกจุดสำรวจ: เสา ${data.poleId || ''}`, 'info');
+        addRealtimeActivityLog(`${crewName || 'ทีมงาน'} บันทึกเสา ${data.poleId} (${data.voltage})`);
+        updateLatestActivityTicker(`${crewName || 'ทีมงาน'} บันทึกเสา ${data.poleId}`);
+      }
+      else if (action === 'JOB_CLOSURE' && data) {
+        await dbPut('surveys', data);
+        await reloadAllData();
+        renderUI();
+
+        showRealtimeToast(`✅ ${crewName || 'ทีมงาน'} ปิดงานสำเร็จ: เสา ${data.poleId}`, 'success');
+        addRealtimeActivityLog(`${crewName || 'ทีมงาน'} ปิดงานเสา ${data.poleId} เรียบร้อยแล้ว`);
+        updateLatestActivityTicker(`✅ ${crewName || 'ทีมงาน'} ปิดงานเสา ${data.poleId}`);
+      }
+      else if (action === 'SURVEY_DELETE' && data && data.id) {
+        await dbDelete('surveys', data.id);
+        await reloadAllData();
+        renderUI();
+        addRealtimeActivityLog(`${crewName || 'ทีมงาน'} ลบจุดสำรวจ`);
+      }
+      else if (action === 'CREW_GPS' && data) {
+        updateLiveCrewMarkerOnMap(payload.senderId, crewName, data.lat, data.lng);
+      }
+      else if (action === 'USER_JOIN') {
+        addRealtimeActivityLog(`🟢 ${crewName || 'เพื่อนร่วมทีม'} เข้าร่วมห้อง`);
+      }
+    }
+
+    function setRealtimeUIStatus(status, text) {
+      AppState.realtimeStatus = status;
+      const dot = document.getElementById('realtimeStatusDot');
+      const label = document.getElementById('realtimeStatusText');
+      const roomLabel = document.getElementById('realtimeRoomLabel');
+
+      if (status === 'connected') {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping';
+        label.innerText = 'REALTIME LIVE';
+        label.className = 'text-[11px] text-emerald-600 dark:text-emerald-400';
+        roomLabel.innerText = `ห้อง: ${AppState.roomCode}`;
+      } else if (status === 'connecting') {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse';
+        label.innerText = 'CONNECTING...';
+        label.className = 'text-[11px] text-amber-500';
+      } else {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-slate-400';
+        label.innerText = 'OFFLINE';
+        label.className = 'text-[11px] text-slate-400';
+      }
+    }
+
+    function showRealtimeToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      
+      const bgColors = type === 'success' ? 'bg-emerald-600 text-white' : 'bg-slate-900/90 text-white border border-indigo-500/40 shadow-glow-mv';
+      
+      toast.className = `toast-animate pointer-events-auto p-3.5 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-semibold ${bgColors}`;
+      toast.innerHTML = `
+        <i data-lucide="${type === 'success' ? 'check-circle-2' : 'radio'}" class="w-4 h-4 flex-shrink-0"></i>
+        <span class="flex-1">${message}</span>
+      `;
+      container.appendChild(toast);
+      lucide.createIcons();
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+        toast.style.transition = 'all 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    function addRealtimeActivityLog(msg) {
+      const list = document.getElementById('realtimeActivityList');
+      if (!list) return;
+      const timeStr = new Date().toLocaleTimeString('th-TH');
+      const item = document.createElement('div');
+      item.innerText = `[${timeStr}] ${msg}`;
+      list.prepend(item);
+    }
+
+    function updateLatestActivityTicker(msg) {
+      const el = document.getElementById('realtimeLatestActivity');
+      if (el) el.innerText = msg;
+    }
+
+    // Live Crew Map Pin
+    function updateLiveCrewMarkerOnMap(senderId, name, lat, lng) {
+      if (!AppState.map) return;
+
+      let marker = AppState.liveCrewMarkers.get(senderId);
+      const iconHtml = `
+        <div class="live-crew-pin">
+          <div class="live-crew-pulse"></div>
+          <div class="w-9 h-9 rounded-2xl bg-blue-600 text-white border-2 border-white shadow-xl flex items-center justify-center font-bold text-xs relative z-10">
+            🚚
+          </div>
+          <span class="px-1.5 py-0.5 rounded bg-slate-900/90 text-white font-bold text-[9px] mt-1 shadow border border-white/20 whitespace-nowrap z-10">
+            ${name || 'ทีมงาน'}
+          </span>
+        </div>
+      `;
+
+      const crewIcon = L.divIcon({
+        className: 'custom-crew-pin',
+        html: iconHtml,
+        iconSize: [44, 52],
+        iconAnchor: [22, 26]
+      });
+
+      if (marker) {
+        marker.setLatLng([lat, lng]);
+      } else {
+        marker = L.marker([lat, lng], { icon: crewIcon }).addTo(AppState.map);
+        marker.bindPopup(`<b>📍 พิกัดทีมงานสด:</b> ${name || 'เพื่อนร่วมทีม'}<br><span class="text-xs text-slate-400">${new Date().toLocaleTimeString()}</span>`);
+        AppState.liveCrewMarkers.set(senderId, marker);
+      }
+    }
+
+    // Toggle Live GPS Broadcast for current user
+    function toggleLiveCrewGpsBroadcast(enable) {
+      AppState.isBroadcastingGps = enable;
+      const badge = document.getElementById('crewBroadcastStatusBadge');
+
+      if (enable) {
+        if (!navigator.geolocation) {
+          alert('อุปกรณ์นี้ไม่รองรับ GPS');
+          return;
+        }
+
+        badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 animate-pulse';
+        badge.innerText = '🟢 กำลังแชร์สด';
+
+        AppState.gpsWatchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const { latitude, longitude } = pos.coords;
+            broadcastRealtimeEvent('CREW_GPS', { lat: latitude, lng: longitude });
+          },
+          (err) => console.warn('GPS watch error:', err),
+          { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+        );
+
+        showRealtimeToast('📡 เปิดแชร์พิกัดทีมงานแบบเรียลไทม์แล้ว', 'success');
+      } else {
+        badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-500';
+        badge.innerText = 'ปิดอยู่';
+        if (AppState.gpsWatchId !== null) {
+          navigator.geolocation.clearWatch(AppState.gpsWatchId);
+          AppState.gpsWatchId = null;
+        }
+      }
+    }
+
+    /* =========================================================
+       3. SAMPLE SEED DATA & INITIALIZATION
+       ========================================================= */
+    async function seedInitialDataIfEmpty() {
+      const projects = await dbGetAll('projects');
+      if (projects.length === 0) {
+        const defaultProj = {
+          id: 'proj-feeder-01',
+          name: 'ฟีดเดอร์ 01 สายหลัก (สถานีไฟฟ้า 115kV)',
+          description: 'งานสำรวจความพร้อมระบบจำหน่ายสายส่งและกิ่งไม้รุกล้ำ',
+          createdAt: new Date().toISOString()
+        };
+        await dbPut('projects', defaultProj);
+        AppState.currentProjectId = defaultProj.id;
+
+        const sampleSurveys = [
+          {
+            id: 'srv-001',
+            projectId: defaultProj.id,
+            poleId: 'VB-01/012',
+            landmark: 'หน้าโรงเรียนชุมชนบ้านดอน',
+            voltage: 'MV',
+            category: 'ต้นไม้ใกล้แนวสาย',
+            vehicleTypes: ['bucket', 'truck6'],
+            notes: 'ต้นจามจุรีใหญ่ ยอดไม้เข้าใกล้สายแรงสูง 22kV ระยะเหลือต่ำกว่า 1 เมตร เสี่ยงไฟกระโดดช่วงฝนตก',
+            lat: 13.7585,
+            lng: 100.5052,
+            gpsSource: 'exif',
+            status: 'pending',
+            beforePhoto: 'data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"%3E%3Crect width="400" height="300" fill="%231e293b"/%3E%3Ctext x="50%25" y="45%25" dominant-baseline="middle" text-anchor="middle" fill="%23ef4444" font-family="sans-serif" font-size="20" font-weight="bold"%3E%E2%9A%A0%EF%B8%8F BEFORE: %E0%B8%95%E0%B9%89%E0%B8%99%E0%B9%82%E0%B8%A1%E0%B9%89%E0%B9%83%E0%B8%81%E0%B8%A5%E0%B9%89%E0%B8%AA%E0%B8%B2%E0%B8%A2 MV%3C/text%3E%3Ctext x="50%25" y="60%25" dominant-baseline="middle" text-anchor="middle" fill="%2394a3b8" font-family="sans-serif" font-size="14"%3E%E0%B9%80%E0%B8%AA%E0%B8%B2 VB-01/012 (22kV)%3C/text%3E%3C/svg%3E',
+            afterPhoto: null,
+            surveyDate: new Date(Date.now() - 86400000 * 2).toISOString(),
+            completedDate: null,
+            closureNotes: ''
+          },
+          {
+            id: 'srv-002',
+            projectId: defaultProj.id,
+            poleId: 'LV-S02-045',
+            landmark: 'ปากซอยเทศบาล 8',
+            voltage: 'LV',
+            category: 'สายสื่อสาร',
+            vehicleTypes: ['climb', 'pickup'],
+            notes: 'สายสื่อสารร่วงห้อยขวางทางสัญจร และพาดทับสายดับเบิ้ลวงจรแรงต่ำ',
+            lat: 13.7532,
+            lng: 100.5098,
+            gpsSource: 'gps',
+            status: 'in_progress',
+            beforePhoto: 'data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"%3E%3Crect width="400" height="300" fill="%231e293b"/%3E%3Ctext x="50%25" y="45%25" dominant-baseline="middle" text-anchor="middle" fill="%23f59e0b" font-family="sans-serif" font-size="20" font-weight="bold"%3E%E2%9A%A0%EF%B8%8F BEFORE: %E0%B8%AA%E0%B8%B2%E0%B8%A2%E0%B8%AA%E0%B8%B7%E0%B9%88%E0%B8%AD%E0%B8%AA%E0%B8%B2%E0%B8%A3%E0%B8%AB%E0%B8%A2%E0%B9%88%E0%B8%AD%E0%B8%99%3C/text%3E%3Ctext x="50%25" y="60%25" dominant-baseline="middle" text-anchor="middle" fill="%2394a3b8" font-family="sans-serif" font-size="14"%3E%E0%B9%80%E0%B8%AA%E0%B8%B2 LV-S02-045 (400V)%3C/text%3E%3C/svg%3E',
+            afterPhoto: null,
+            surveyDate: new Date(Date.now() - 86400000).toISOString(),
+            completedDate: null,
+            closureNotes: ''
+          },
+          {
+            id: 'srv-003',
+            projectId: defaultProj.id,
+            poleId: 'MV-TR03-009',
+            landmark: 'ข้างโรงงานแป้งมันสำปะหลัง',
+            voltage: 'MV',
+            category: 'ลูกถ้วย/อุปกรณ์ตัดตอน',
+            vehicleTypes: ['bucket', 'crane'],
+            notes: 'ดรอปเอาท์ฟิวส์แตกร้าว 1 เฟส และลูกถ้วยแขวนมีคราบฝุ่นหนาแน่น',
+            lat: 13.7621,
+            lng: 100.4985,
+            gpsSource: 'manual',
+            status: 'completed',
+            beforePhoto: 'data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"%3E%3Crect width="400" height="300" fill="%231e293b"/%3E%3Ctext x="50%25" y="45%25" dominant-baseline="middle" text-anchor="middle" fill="%23ef4444" font-family="sans-serif" font-size="20" font-weight="bold"%3E%E2%9A%A0%EF%B8%8F BEFORE: %E0%B8%94%E0%B8%A3%E0%B8%AD%E0%B8%9B%E0%B9%80%E0%B8%AD%E0%B8%B2%E0%B8%97%E0%B9%8C%E0%B8%8A%E0%B8%B3%E0%B8%A3%E0%B8%B8%E0%B8%94%3C/text%3E%3Ctext x="50%25" y="60%25" dominant-baseline="middle" text-anchor="middle" fill="%2394a3b8" font-family="sans-serif" font-size="14"%3E%E0%B9%80%E0%B8%AA%E0%B8%B2 MV-TR03-009%3C/text%3E%3C/svg%3E',
+            afterPhoto: 'data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"%3E%3Crect width="400" height="300" fill="%23064e3b"/%3E%3Ctext x="50%25" y="45%25" dominant-baseline="middle" text-anchor="middle" fill="%2334d399" font-family="sans-serif" font-size="20" font-weight="bold"%3E%E2%9C%85 AFTER: %E0%B9%80%E0%B8%9B%E0%B8%A5%E0%B8%B5%E0%B9%88%E0%B8%A2%E0%B8%99%E0%B8%AD%E0%B8%B8%E0%B8%9B%E0%B8%81%E0%B8%A3%E0%B8%93%E0%B9%8C%E0%B9%83%E0%B8%AB%E0%B8%A1%E0%B9%88%E0%B9%81%E0%B8%A5%E0%B9%89%E0%B8%A7%E0%B9%80%E0%B8%AA%E0%B8%A3%E0%B9%87%E0%B8%88%3C/text%3E%3Ctext x="50%25" y="60%25" dominant-baseline="middle" text-anchor="middle" fill="%23a7f3d0" font-family="sans-serif" font-size="14"%3E%E0%B9%80%E0%B8%9B%E0%B8%A5%E0%B8%B5%E0%B9%88%E0%B8%A2%E0%B8%99 Cutout 24kV %E0%B9%81%E0%B8%A5%E0%B8%B0%E0%B8%97%E0%B8%94%E0%B8%AA%E0%B8%AD%E0%B8%9A%E0%B8%88%E0%B9%88%E0%B8%B2%E0%B8%A2%E0%B9%84%E0%B8%9F%E0%B8%9B%E0%B8%81%E0%B8%95%E0%B8%B4%3C/text%3E%3C/svg%3E',
+            surveyDate: new Date(Date.now() - 86400000 * 3).toISOString(),
+            completedDate: new Date().toISOString(),
+            closureNotes: 'เปลี่ยนชุดดรอปเอาท์ฟิวส์และทำความสะอาดลูกถ้วยพร้อมจ่ายไฟเรียบร้อย'
+          }
+        ];
+
+        for (const s of sampleSurveys) {
+          await dbPut('surveys', s);
+        }
+      }
+    }
+
+    /* =========================================================
+       4. MAP INITIALIZATION & PIN RENDERING ENGINE
+       ========================================================= */
+    function initMainMap() {
+      if (AppState.map) return;
+
+      const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+      });
+
+      const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri',
+        maxZoom: 19
+      });
+
+      const darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; CARTO',
+        maxZoom: 19
+      });
+
+      AppState.map = L.map('mainMap', {
+        center: [13.7563, 100.5018],
+        zoom: 13,
+        layers: [osmLayer],
+        zoomControl: false
+      });
+
+      L.control.zoom({ position: 'topright' }).addTo(AppState.map);
+
+      AppState.tileLayers = {
+        osm: osmLayer,
+        satellite: satelliteLayer,
+        dark: darkLayer
+      };
+
+      AppState.markerClusterGroup = L.markerClusterGroup({
+        showCoverageOnHover: false,
+        maxClusterRadius: 40,
+        spiderfyOnMaxZoom: true,
+        iconCreateFunction: function (cluster) {
+          const count = cluster.getChildCount();
+          return L.divIcon({
+            html: `<div class="w-10 h-10 rounded-full bg-slate-900/90 text-white border-2 border-indigo-500 shadow-glow-mv flex items-center justify-center font-black text-xs">${count}</div>`,
+            className: 'custom-cluster-icon',
+            iconSize: L.point(40, 40)
+          });
+        }
+      });
+
+      AppState.map.addLayer(AppState.markerClusterGroup);
+
+      document.getElementById('selectBasemap').addEventListener('change', (e) => {
+        const val = e.target.value;
+        Object.values(AppState.tileLayers).forEach(layer => AppState.map.removeLayer(layer));
+        if (AppState.tileLayers[val]) {
+          AppState.map.addLayer(AppState.tileLayers[val]);
+        }
+      });
+
+      document.getElementById('btnFitBounds').addEventListener('click', fitMapToMarkers);
+      document.getElementById('btnLocateUser').addEventListener('click', locateUserOnMap);
+    }
+
+    function fitMapToMarkers() {
+      const validSurveys = getFilteredSurveys().filter(s => s.lat && s.lng);
+      if (validSurveys.length > 0) {
+        const bounds = L.latLngBounds(validSurveys.map(s => [s.lat, s.lng]));
+        AppState.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+      } else {
+        AppState.map.setView([13.7563, 100.5018], 13);
+      }
+    }
+
+    function locateUserOnMap() {
+      if (!navigator.geolocation) {
+        alert('เบราว์เซอร์ไม่รองรับการระบุพิกัด GPS');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          AppState.map.setView([lat, lng], 16);
+          L.circleMarker([lat, lng], {
+            radius: 8,
+            fillColor: '#3b82f6',
+            color: '#ffffff',
+            weight: 3,
+            opacity: 1,
+            fillOpacity: 0.9
+          }).addTo(AppState.map).bindPopup('📍 ตำแหน่งปัจจุบันของคุณ').openPopup();
+        },
+        (err) => alert('ไม่สามารถดึงพิกัดปัจจุบันได้: ' + err.message),
+        { enableHighAccuracy: true }
+      );
+    }
+
+    function createCustomMarkerIcon(survey) {
+      const isMV = survey.voltage === 'MV';
+      const statusColor = survey.status === 'completed' ? '#10B981' : (survey.status === 'in_progress' ? '#F59E0B' : '#EF4444');
+      const badgeText = isMV ? 'MV' : 'LV';
+
+      const html = `
+        <div class="custom-map-pin relative flex flex-col items-center">
+          <div class="w-9 h-9 rounded-2xl flex items-center justify-center font-bold text-xs text-white shadow-xl border-2" style="background: ${statusColor}; border-color: white;">
+            <span>${badgeText}</span>
+          </div>
+          <div class="w-2.5 h-2.5 rotate-45 -mt-1 shadow-md border-r-2 border-b-2" style="background: ${statusColor}; border-color: white;"></div>
+          <div class="w-3 h-1 rounded-full bg-black/40 blur-[1px] mt-0.5"></div>
+        </div>
+      `;
+
+      return L.divIcon({
+        className: 'custom-leaflet-marker',
+        html: html,
+        iconSize: [36, 42],
+        iconAnchor: [18, 40],
+        popupAnchor: [0, -36]
+      });
+    }
+
+    function updateMapMarkers() {
+      if (!AppState.map || !AppState.markerClusterGroup) return;
+
+      AppState.markerClusterGroup.clearLayers();
+      AppState.markersMap.clear();
+
+      const surveys = getFilteredSurveys();
+
+      surveys.forEach(survey => {
+        if (!survey.lat || !survey.lng) return;
+
+        const icon = createCustomMarkerIcon(survey);
+        const marker = L.marker([survey.lat, survey.lng], { icon: icon });
+
+        const popupHtml = `
+          <div class="w-64 p-3 flex flex-col gap-2">
+            <div class="relative h-28 rounded-lg overflow-hidden bg-slate-800">
+              <img src="${survey.beforePhoto || ''}" class="w-full h-full object-cover" />
+              <div class="absolute top-1.5 left-1.5 flex gap-1">
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white ${survey.voltage === 'MV' ? 'bg-indigo-600' : 'bg-cyan-600'}">${survey.voltage}</span>
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white ${survey.status === 'completed' ? 'bg-emerald-600' : (survey.status === 'in_progress' ? 'bg-amber-600' : 'bg-red-600')}">
+                  ${survey.status === 'completed' ? 'แล้วเสร็จ' : (survey.status === 'in_progress' ? 'กำลังทำ' : 'รอดำเนินการ')}
+                </span>
+              </div>
+            </div>
+            <div>
+              <h5 class="font-bold text-sm text-slate-100 flex items-center justify-between">
+                <span>${survey.poleId}</span>
+                <span class="text-[10px] text-slate-400 font-mono">${survey.lat.toFixed(4)}, ${survey.lng.toFixed(4)}</span>
+              </h5>
+              <p class="text-xs text-indigo-300 font-semibold">${survey.category}</p>
+              <p class="text-[11px] text-slate-300 line-clamp-2 mt-0.5">${survey.notes || '-'}</p>
+            </div>
+            <div class="pt-2 border-t border-slate-700/80 flex items-center justify-between gap-1">
+              <a href="https://www.google.com/maps/dir/?api=1&destination=${survey.lat},${survey.lng}" target="_blank" class="flex-1 py-1 px-2 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] text-center flex items-center justify-center gap-1">
+                <i data-lucide="navigation-2" class="w-3 h-3"></i>
+                <span>นำทาง</span>
+              </a>
+              <button onclick="openJobClosureModal('${survey.id}')" class="py-1 px-2 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1">
+                <i data-lucide="check-circle" class="w-3 h-3"></i>
+                <span>ปิดงาน</span>
+              </button>
+            </div>
+          </div>
+        `;
+
+        marker.bindPopup(popupHtml);
+        AppState.markerClusterGroup.addLayer(marker);
+        AppState.markersMap.set(survey.id, marker);
+      });
+
+      lucide.createIcons();
+    }
+
+    /* =========================================================
+       5. INTERACTIVE MAP PIN PICKER ENGINE
+       ========================================================= */
+    function initPickerMap() {
+      if (AppState.pickerMap) return;
+
+      AppState.pickerMap = L.map('pickerMap', {
+        center: [13.7563, 100.5018],
+        zoom: 14,
+        zoomControl: true
+      });
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(AppState.pickerMap);
+
+      AppState.pickerMap.on('click', (e) => {
+        setPickerLocation(e.latlng.lat, e.latlng.lng);
+      });
+    }
+
+    function setPickerLocation(lat, lng) {
+      AppState.currentTempLocation = { lat, lng };
+      document.getElementById('pickerCoordDisplay').innerText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+
+      if (AppState.pickerMarker) {
+        AppState.pickerMarker.setLatLng([lat, lng]);
+      } else {
+        AppState.pickerMarker = L.marker([lat, lng], {
+          draggable: true,
+          icon: L.divIcon({
+            html: '<div class="w-8 h-8 rounded-full bg-indigo-600 text-white border-2 border-white shadow-xl flex items-center justify-center font-bold text-sm animate-bounce">📍</div>',
+            iconSize: [32, 32],
+            iconAnchor: [16, 32]
+          })
+        }).addTo(AppState.pickerMap);
+
+        AppState.pickerMarker.on('dragend', (e) => {
+          const pos = e.target.getLatLng();
+          setPickerLocation(pos.lat, pos.lng);
+        });
+      }
+
+      AppState.pickerMap.panTo([lat, lng]);
+    }
+
+    function openMapPickerModal(currentLat, currentLng) {
+      document.getElementById('modalMapPicker').classList.remove('hidden');
+      initPickerMap();
+
+      setTimeout(() => {
+        AppState.pickerMap.invalidateSize();
+        const lat = currentLat || 13.7563;
+        const lng = currentLng || 100.5018;
+        setPickerLocation(lat, lng);
+        AppState.pickerMap.setView([lat, lng], 15);
+      }, 200);
+    }
+
+    /* =========================================================
+       6. DATA RETRIEVAL, FILTERING & UI RENDERING
+       ========================================================= */
+    function getFilteredSurveys() {
+      return AppState.surveys.filter(s => {
+        if (s.projectId !== AppState.currentProjectId) return false;
+
+        if (AppState.activeFilter === 'pending' && s.status !== 'pending') return false;
+        if (AppState.activeFilter === 'in_progress' && s.status !== 'in_progress') return false;
+        if (AppState.activeFilter === 'completed' && s.status !== 'completed') return false;
+        if (AppState.activeFilter === 'missing_gps' && (s.lat && s.lng)) return false;
+
+        if (AppState.vehicleFilter) {
+          if (!s.vehicleTypes || !s.vehicleTypes.includes(AppState.vehicleFilter)) return false;
+        }
+
+        if (AppState.searchQuery) {
+          const q = AppState.searchQuery.toLowerCase();
+          const matchPole = (s.poleId || '').toLowerCase().includes(q);
+          const matchCat = (s.category || '').toLowerCase().includes(q);
+          const matchLandmark = (s.landmark || '').toLowerCase().includes(q);
+          const matchNotes = (s.notes || '').toLowerCase().includes(q);
+          if (!matchPole && !matchCat && !matchLandmark && !matchNotes) return false;
+        }
+
+        return true;
+      });
+    }
+
+    function renderUI() {
+      const activeProject = AppState.projects.find(p => p.id === AppState.currentProjectId);
+      const projectSurveys = AppState.surveys.filter(s => s.projectId === AppState.currentProjectId);
+      
+      if (activeProject) {
+        document.getElementById('headerProjectName').innerText = activeProject.name;
+        const pendingCount = projectSurveys.filter(s => s.status === 'pending').length;
+        const compCount = projectSurveys.filter(s => s.status === 'completed').length;
+        document.getElementById('headerProjectStats').innerText = `รอ ${pendingCount} / เสร็จ ${compCount}`;
+      }
+
+      const total = projectSurveys.length;
+      const pending = projectSurveys.filter(s => s.status === 'pending').length;
+      const inProgress = projectSurveys.filter(s => s.status === 'in_progress').length;
+      const completed = projectSurveys.filter(s => s.status === 'completed').length;
+      const mvCount = projectSurveys.filter(s => s.voltage === 'MV').length;
+      const lvCount = projectSurveys.filter(s => s.voltage === 'LV').length;
+      const missingGps = projectSurveys.filter(s => !s.lat || !s.lng).length;
+
+      document.getElementById('statTotal').innerText = total;
+      document.getElementById('statPending').innerText = pending;
+      document.getElementById('statInProgress').innerText = inProgress;
+      document.getElementById('statCompleted').innerText = completed;
+      document.getElementById('statMV').innerText = mvCount;
+      document.getElementById('statLV').innerText = lvCount;
+      
+      const missingBanner = document.getElementById('missingGpsBanner');
+      if (missingGps > 0) {
+        missingBanner.classList.remove('hidden');
+        document.getElementById('statMissingGps').innerText = missingGps;
+      } else {
+        missingBanner.classList.add('hidden');
+      }
+
+      document.getElementById('filterCountAll').innerText = total;
+      document.getElementById('filterCountPending').innerText = pending;
+      document.getElementById('filterCountInProgress').innerText = inProgress;
+      document.getElementById('filterCountCompleted').innerText = completed;
+
+      const filtered = getFilteredSurveys();
+      renderSurveyCards(filtered);
+      renderSurveyTable(filtered);
+      updateMapMarkers();
+
+      const emptyEl = document.getElementById('emptySurveyState');
+      if (filtered.length === 0) {
+        emptyEl.classList.remove('hidden');
+        emptyEl.classList.add('flex');
+      } else {
+        emptyEl.classList.add('hidden');
+        emptyEl.classList.remove('flex');
+      }
+
+      lucide.createIcons();
+    }
+
+    function renderSurveyCards(surveys) {
+      const container = document.getElementById('viewContainerCards');
+      if (surveys.length === 0) {
+        container.innerHTML = '';
+        return;
+      }
+
+      const vehicleNames = {
+        bucket: '🚜 กระเช้า',
+        crane: '🏗️ เครน',
+        truck6: '🚚 รถ 6 ล้อ',
+        pickup: '🚙 ตรวจการ',
+        climb: '🧗‍♂️ เดินเท้า'
+      };
+
+      container.innerHTML = surveys.map(s => {
+        const isMV = s.voltage === 'MV';
+        const hasGps = s.lat && s.lng;
+        const statusBadge = s.status === 'completed'
+          ? '<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">🟢 แล้วเสร็จ</span>'
+          : (s.status === 'in_progress'
+            ? '<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">🟡 กำลังทำ</span>'
+            : '<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">🔴 รอดำเนินการ</span>');
+
+        const vehicleBadges = (s.vehicleTypes || []).map(v => 
+          `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${vehicleNames[v] || v}</span>`
+        ).join('');
+
+        return `
+          <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row gap-4 group">
+            
+            <div class="relative sm:w-36 h-36 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 cursor-pointer" onclick="openJobClosureModal('${s.id}')">
+              <img src="${s.beforePhoto || ''}" alt="Before Photo" class="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+              <div class="absolute top-2 left-2">
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold text-white shadow-sm ${isMV ? 'bg-indigo-600' : 'bg-cyan-600'}">
+                  ${s.voltage}
+                </span>
+              </div>
+              ${s.afterPhoto ? `
+                <div class="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold text-[9px] flex items-center gap-0.5 shadow-md">
+                  <i data-lucide="check" class="w-2.5 h-2.5"></i>
+                  <span>มีภาพ After</span>
+                </div>
+              ` : ''}
+            </div>
+
+            <div class="flex-1 flex flex-col justify-between gap-2">
+              <div>
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                  <div class="flex items-center gap-2">
+                    <h4 class="font-extrabold text-base text-slate-800 dark:text-slate-100 tracking-tight">${s.poleId}</h4>
+                    <span class="text-xs font-semibold text-indigo-600 dark:text-indigo-400">${s.category}</span>
+                  </div>
+                  <div>${statusBadge}</div>
+                </div>
+
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1">
+                  <i data-lucide="map-pin" class="w-3.5 h-3.5 text-slate-400 flex-shrink-0"></i>
+                  <span class="truncate">${s.landmark || 'ไม่ได้ระบุจุดสังเกต'}</span>
+                </p>
+                <p class="text-xs text-slate-700 dark:text-slate-300 mt-1 line-clamp-2">${s.notes || '-'}</p>
+
+                <div class="flex items-center gap-1 flex-wrap mt-2">
+                  ${vehicleBadges}
+                </div>
+              </div>
+
+              <div class="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2 flex-wrap text-xs">
+                
+                <div>
+                  ${hasGps ? `
+                    <button onclick="panMapToCoord(${s.lat}, ${s.lng}, '${s.id}')" class="text-indigo-600 dark:text-indigo-400 hover:underline font-mono text-[11px] flex items-center gap-1">
+                      <i data-lucide="crosshair" class="w-3 h-3"></i>
+                      <span>${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}</span>
+                    </button>
+                  ` : `
+                    <button onclick="openQuickGpsFixModal('${s.id}')" class="touch-target px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-bold text-[11px] flex items-center gap-1 animate-pulse">
+                      <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-amber-500"></i>
+                      <span>ระบุพิกัดทันที</span>
+                    </button>
+                  `}
+                </div>
+
+                <div class="flex items-center gap-1.5">
+                  ${hasGps ? `
+                    <a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}" target="_blank" class="touch-target p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400" title="นำทาง Google Maps">
+                      <i data-lucide="navigation-2" class="w-4 h-4"></i>
+                    </a>
+                  ` : ''}
+                  
+                  <button onclick="openJobClosureModal('${s.id}')" class="touch-target px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all">
+                    <i data-lucide="check-circle-2" class="w-3 h-3"></i>
+                    <span>${s.status === 'completed' ? 'ดูผลงาน' : 'ปิดงาน'}</span>
+                  </button>
+
+                  <button onclick="editSurvey('${s.id}')" class="touch-target p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100" title="แก้ไข">
+                    <i data-lucide="edit-3" class="w-4 h-4"></i>
+                  </button>
+
+                  <button onclick="deleteSurvey('${s.id}')" class="touch-target p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-red-600 dark:hover:text-red-400" title="ลบ">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                  </button>
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderSurveyTable(surveys) {
+      const tbody = document.getElementById('tableSurveyBody');
+      if (surveys.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-slate-400">ไม่พบรายการข้อมูล</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = surveys.map(s => {
+        const hasGps = s.lat && s.lng;
+        const statusClass = s.status === 'completed'
+          ? 'bg-emerald-500/10 text-emerald-600'
+          : (s.status === 'in_progress' ? 'bg-amber-500/10 text-amber-600' : 'bg-red-500/10 text-red-600');
+
+        return `
+          <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+            <td class="p-2.5 font-bold font-mono text-slate-800 dark:text-slate-200">${s.poleId}</td>
+            <td class="p-2.5">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold text-white ${s.voltage === 'MV' ? 'bg-indigo-600' : 'bg-cyan-600'}">
+                ${s.voltage}
+              </span>
+            </td>
+            <td class="p-2.5 font-medium">${s.category}</td>
+            <td class="p-2.5 text-[11px] text-slate-500">${(s.vehicleTypes || []).join(', ')}</td>
+            <td class="p-2.5">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${statusClass}">
+                ${s.status === 'completed' ? 'แล้วเสร็จ' : (s.status === 'in_progress' ? 'กำลังทำ' : 'รอดำเนินการ')}
+              </span>
+            </td>
+            <td class="p-2.5 font-mono text-[11px]">
+              ${hasGps ? `${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}` : '<span class="text-amber-500 font-bold">⚠️ ขาดพิกัด</span>'}
+            </td>
+            <td class="p-2.5 text-right space-x-1">
+              <button onclick="openJobClosureModal('${s.id}')" class="p-1 rounded bg-emerald-600 text-white" title="ปิดงาน"><i data-lucide="check" class="w-3.5 h-3.5"></i></button>
+              <button onclick="editSurvey('${s.id}')" class="p-1 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200" title="แก้ไข"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+              <button onclick="deleteSurvey('${s.id}')" class="p-1 rounded bg-red-100 dark:bg-red-950 text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function panMapToCoord(lat, lng, surveyId) {
+      if (!AppState.map) return;
+      AppState.map.setView([lat, lng], 17);
+      const marker = AppState.markersMap.get(surveyId);
+      if (marker) {
+        setTimeout(() => marker.openPopup(), 300);
+      }
+    }
+
+    /* =========================================================
+       7. EXIF EXTRACTION & PHOTO COMPRESSION UTILITIES
+       ========================================================= */
+    function compressImageFile(file, maxWidth = 1280, maxHeight = 1280, quality = 0.75) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > maxWidth) {
+                height = Math.round((height * maxWidth) / width);
+                width = maxWidth;
+              }
+            } else {
+              if (height > maxHeight) {
+                width = Math.round((width * maxHeight) / height);
+                height = maxHeight;
+              }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+            resolve(compressedBase64);
+          };
+          img.onerror = reject;
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function extractGpsFromPhoto(file) {
+      try {
+        if (window.exifr) {
+          const exifData = await exifr.gps(file);
+          if (exifData && exifData.latitude && exifData.longitude) {
+            return {
+              lat: exifData.latitude,
+              lng: exifData.longitude,
+              source: 'exif'
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('EXIF parsing notice:', err);
+      }
+      return null;
+    }
+
+    /* =========================================================
+       8. FORM EVENT HANDLERS & MODAL CONTROLS
+       ========================================================= */
+    function resetSurveyForm() {
+      AppState.editingSurveyId = null;
+      AppState.tempBeforePhotoBase64 = null;
+      AppState.selectedVehicles = new Set(['bucket']);
+
+      document.getElementById('formSurveyId').value = '';
+      document.getElementById('formModalTitle').innerText = 'บันทึกข้อมูลสำรวจจุดใหม่';
+      document.getElementById('formPoleId').value = '';
+      document.getElementById('formLandmark').value = '';
+      document.getElementById('formCategory').value = 'ต้นไม้ใกล้แนวสาย';
+      document.getElementById('formNotes').value = '';
+      document.getElementById('formLat').value = '';
+      document.getElementById('formLng').value = '';
+      document.getElementById('formStatus').value = 'pending';
+
+      setFormVoltage('MV');
+      updateVehicleBadgesUI();
+      updateGpsStatusBadge(null, null);
+
+      document.getElementById('beforePhotoPlaceholder').classList.remove('hidden');
+      document.getElementById('beforePhotoPreviewContainer').classList.add('hidden');
+      document.getElementById('beforePhotoPreview').src = '';
+      document.getElementById('inputBeforePhoto').value = '';
+    }
+
+    function setFormVoltage(vol) {
+      document.getElementById('formVoltage').value = vol;
+      const btnMV = document.getElementById('btnVoltageMV');
+      const btnLV = document.getElementById('btnVoltageLV');
+
+      if (vol === 'MV') {
+        btnMV.className = 'touch-target flex items-center justify-center gap-2 p-3 rounded-xl border-2 font-bold text-sm transition-all border-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 ring-2 ring-indigo-500/20';
+        btnLV.className = 'touch-target flex items-center justify-center gap-2 p-3 rounded-xl border-2 font-bold text-sm transition-all border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400';
+      } else {
+        btnLV.className = 'touch-target flex items-center justify-center gap-2 p-3 rounded-xl border-2 font-bold text-sm transition-all border-cyan-600 bg-cyan-50 dark:bg-cyan-950/50 text-cyan-600 dark:text-cyan-300 ring-2 ring-cyan-500/20';
+        btnMV.className = 'touch-target flex items-center justify-center gap-2 p-3 rounded-xl border-2 font-bold text-sm transition-all border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400';
+      }
+    }
+
+    function updateVehicleBadgesUI() {
+      document.querySelectorAll('#vehicleBadgeContainer .vehicle-pill').forEach(btn => {
+        const v = btn.getAttribute('data-vehicle');
+        if (AppState.selectedVehicles.has(v)) {
+          btn.className = 'vehicle-pill touch-target px-3 py-2 rounded-xl border-2 border-indigo-600 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm';
+        } else {
+          btn.className = 'vehicle-pill touch-target px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs font-semibold flex items-center gap-1.5 transition-all';
+        }
+      });
+    }
+
+    function updateGpsStatusBadge(lat, lng, source = 'manual') {
+      const badge = document.getElementById('gpsStatusBadge');
+      if (lat && lng) {
+        badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20';
+        badge.innerText = `📍 มีพิกัดสมบูรณ์ (${source === 'exif' ? 'จาก EXIF ภาพ' : 'ระบุตำแหน่งแล้ว'})`;
+      } else {
+        badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20';
+        badge.innerText = '⚠️ ยังไม่มีพิกัด GPS';
+      }
+    }
+
+    function openSurveyModal(isEdit = false, surveyData = null) {
+      resetSurveyForm();
+      if (isEdit && surveyData) {
+        AppState.editingSurveyId = surveyData.id;
+        document.getElementById('formSurveyId').value = surveyData.id;
+        document.getElementById('formModalTitle').innerText = 'แก้ไขข้อมูลจุดสำรวจ ' + surveyData.poleId;
+        document.getElementById('formPoleId').value = surveyData.poleId || '';
+        document.getElementById('formLandmark').value = surveyData.landmark || '';
+        document.getElementById('formCategory').value = surveyData.category || 'ต้นไม้ใกล้แนวสาย';
+        document.getElementById('formNotes').value = surveyData.notes || '';
+        document.getElementById('formLat').value = surveyData.lat || '';
+        document.getElementById('formLng').value = surveyData.lng || '';
+        document.getElementById('formStatus').value = surveyData.status || 'pending';
+
+        setFormVoltage(surveyData.voltage || 'MV');
+        AppState.selectedVehicles = new Set(surveyData.vehicleTypes || ['bucket']);
+        updateVehicleBadgesUI();
+
+        if (surveyData.beforePhoto) {
+          AppState.tempBeforePhotoBase64 = surveyData.beforePhoto;
+          document.getElementById('beforePhotoPlaceholder').classList.add('hidden');
+          document.getElementById('beforePhotoPreviewContainer').classList.remove('hidden');
+          document.getElementById('beforePhotoPreview').src = surveyData.beforePhoto;
+        }
+
+        updateGpsStatusBadge(surveyData.lat, surveyData.lng, surveyData.gpsSource);
+      }
+
+      document.getElementById('modalSurveyForm').classList.remove('hidden');
+    }
+
+    /* =========================================================
+       9. JOB CLOSURE & BEFORE/AFTER VIEWER
+       ========================================================= */
+    function openJobClosureModal(surveyId) {
+      const survey = AppState.surveys.find(s => s.id === surveyId);
+      if (!survey) return;
+
+      document.getElementById('closureSurveyId').value = survey.id;
+      document.getElementById('closurePoleBadge').innerText = `${survey.poleId} (${survey.voltage})`;
+      document.getElementById('closureBeforeDate').innerText = survey.surveyDate ? new Date(survey.surveyDate).toLocaleDateString('th-TH') : '--';
+      document.getElementById('closureBeforeImg').src = survey.beforePhoto || '';
+
+      const afterContainer = document.getElementById('closureAfterPreviewContainer');
+      const afterPlaceholder = document.getElementById('closureAfterPlaceholder');
+      const afterImg = document.getElementById('closureAfterImg');
+
+      if (survey.afterPhoto) {
+        AppState.tempAfterPhotoBase64 = survey.afterPhoto;
+        afterImg.src = survey.afterPhoto;
+        afterContainer.classList.remove('hidden');
+        afterPlaceholder.classList.add('hidden');
+      } else {
+        AppState.tempAfterPhotoBase64 = null;
+        afterImg.src = '';
+        afterContainer.classList.add('hidden');
+        afterPlaceholder.classList.remove('hidden');
+      }
+
+      const nowLocal = new Date().toISOString().slice(0, 16);
+      document.getElementById('closureCompletedDate').value = survey.completedDate ? survey.completedDate.slice(0, 16) : nowLocal;
+      document.getElementById('closureNotes').value = survey.closureNotes || '';
+
+      document.getElementById('modalJobClosure').classList.remove('hidden');
+    }
+
+    function openQuickGpsFixModal(surveyId) {
+      const survey = AppState.surveys.find(s => s.id === surveyId);
+      if (!survey) return;
+
+      openMapPickerModal(13.7563, 100.5018);
+
+      const confirmBtn = document.getElementById('btnConfirmPickerCoord');
+      const originalHandler = confirmBtn.onclick;
+
+      confirmBtn.onclick = async () => {
+        if (AppState.currentTempLocation) {
+          survey.lat = AppState.currentTempLocation.lat;
+          survey.lng = AppState.currentTempLocation.lng;
+          survey.gpsSource = 'manual';
+          await dbPut('surveys', survey);
+          broadcastRealtimeEvent('SURVEY_SAVE', survey);
+          renderUI();
+          document.getElementById('modalMapPicker').classList.add('hidden');
+          confirmBtn.onclick = originalHandler;
+        }
+      };
+    }
+
+    /* =========================================================
+       10. PROJECT MANAGEMENT (SWITCH, CREATE, BACKUP & RESTORE)
+       ========================================================= */
+    function renderProjectModal() {
+      const container = document.getElementById('projectListContainer');
+      container.innerHTML = AppState.projects.map(p => {
+        const isCurrent = p.id === AppState.currentProjectId;
+        const pSurveys = AppState.surveys.filter(s => s.projectId === p.id);
+        const pending = pSurveys.filter(s => s.status === 'pending').length;
+        const comp = pSurveys.filter(s => s.status === 'completed').length;
+
+        return `
+          <div class="p-3 rounded-2xl border ${isCurrent ? 'border-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/40 ring-1 ring-indigo-500' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'} flex items-center justify-between gap-3">
+            <div class="flex-1 cursor-pointer" onclick="switchActiveProject('${p.id}')">
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-sm text-slate-800 dark:text-slate-100">${p.name}</span>
+                ${isCurrent ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-600 text-white">กำลังใช้งาน</span>' : ''}
+              </div>
+              <p class="text-[11px] text-slate-500 mt-0.5">${p.description || 'ไม่มีคำอธิบาย'} • <b class="text-indigo-500">รอ ${pending} / เสร็จ ${comp}</b></p>
+            </div>
+            
+            <div class="flex items-center gap-1">
+              <button onclick="switchActiveProject('${p.id}')" class="touch-target p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-600 hover:text-white text-slate-600 dark:text-slate-300" title="เลือกโปรเจกต์นี้">
+                <i data-lucide="check" class="w-4 h-4"></i>
+              </button>
+              ${AppState.projects.length > 1 ? `
+                <button onclick="deleteProject('${p.id}')" class="touch-target p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-red-500" title="ลบโครงการ">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    async function switchActiveProject(projectId) {
+      AppState.currentProjectId = projectId;
+      document.getElementById('modalProjects').classList.add('hidden');
+      renderUI();
+      fitMapToMarkers();
+    }
+
+    async function deleteProject(projectId) {
+      if (confirm('ยืนยันการลบโครงการนี้และข้อมูลจุดสำรวจทั้งหมดหรือไม่?')) {
+        await dbDelete('projects', projectId);
+        const surveysToDelete = AppState.surveys.filter(s => s.projectId === projectId);
+        for (const s of surveysToDelete) {
+          await dbDelete('surveys', s.id);
+        }
+        await reloadAllData();
+        if (AppState.projects.length > 0) {
+          AppState.currentProjectId = AppState.projects[0].id;
+        }
+        renderUI();
+        renderProjectModal();
+      }
+    }
+
+    function exportProjectBackup() {
+      const activeProj = AppState.projects.find(p => p.id === AppState.currentProjectId);
+      const projectSurveys = AppState.surveys.filter(s => s.projectId === AppState.currentProjectId);
+
+      const backupData = {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        project: activeProj,
+        surveys: projectSurveys
+      };
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `PATROL_${activeProj ? activeProj.name.replace(/\s+/g, '_') : 'Project'}_${new Date().toISOString().slice(0, 10)}.patrol`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    async function importProjectBackup(file) {
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        if (!data.project || !data.surveys) {
+          alert('รูปแบบไฟล์ .patrol ไม่ถูกต้อง');
+          return;
+        }
+
+        const newProjId = 'proj-' + Date.now();
+        const importedProj = {
+          ...data.project,
+          id: newProjId,
+          name: data.project.name + ' (นำเข้า)'
+        };
+
+        await dbPut('projects', importedProj);
+
+        for (const s of data.surveys) {
+          const item = {
+            ...s,
+            id: 'srv-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+            projectId: newProjId
+          };
+          await dbPut('surveys', item);
+          broadcastRealtimeEvent('SURVEY_SAVE', item);
+        }
+
+        await reloadAllData();
+        AppState.currentProjectId = newProjId;
+        renderUI();
+        fitMapToMarkers();
+        alert(`นำเข้าโครงการ "${importedProj.name}" สำเร็จ (${data.surveys.length} จุดสำรวจ)`);
+      } catch (err) {
+        alert('เกิดข้อผิดพลาดในการนำเข้าไฟล์: ' + err.message);
+      }
+    }
+
+    function exportCSV() {
+      const surveys = getFilteredSurveys();
+      if (surveys.length === 0) {
+        alert('ไม่มีข้อมูลสำหรับส่งออก CSV');
+        return;
+      }
+
+      const headers = ['รหัสเสา', 'ระดับแรงดัน', 'หมวดหมู่งาน', 'สถานที่ใกล้เคียง', 'ยานพาหนะ/เครื่องมือ', 'สถานะ', 'ละติจูด (Lat)', 'ลองจิจูด (Lng)', 'หมายเหตุ', 'วันที่สำรวจ', 'วันที่แล้วเสร็จ'];
+      
+      const rows = surveys.map(s => [
+        `"${s.poleId || ''}"`,
+        `"${s.voltage || ''}"`,
+        `"${s.category || ''}"`,
+        `"${(s.landmark || '').replace(/"/g, '""')}"`,
+        `"${(s.vehicleTypes || []).join(', ')}"`,
+        `"${s.status === 'completed' ? 'แล้วเสร็จ' : (s.status === 'in_progress' ? 'กำลังดำเนินการ' : 'รอดำเนินการ')}"`,
+        s.lat || '',
+        s.lng || '',
+        `"${(s.notes || '').replace(/"/g, '""')}"`,
+        `"${s.surveyDate ? new Date(s.surveyDate).toLocaleString('th-TH') : ''}"`,
+        `"${s.completedDate ? new Date(s.completedDate).toLocaleString('th-TH') : ''}"`
+      ]);
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `PATROL_Surveys_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+
+    function preparePrintReport() {
+      const activeProj = AppState.projects.find(p => p.id === AppState.currentProjectId);
+      const surveys = getFilteredSurveys();
+
+      document.getElementById('printProjectName').innerText = activeProj ? activeProj.name : '-';
+      document.getElementById('printReportDate').innerText = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+      document.getElementById('printStatTotal').innerText = surveys.length;
+      document.getElementById('printStatPending').innerText = surveys.filter(s => s.status === 'pending').length;
+      document.getElementById('printStatInProgress').innerText = surveys.filter(s => s.status === 'in_progress').length;
+      document.getElementById('printStatCompleted').innerText = surveys.filter(s => s.status === 'completed').length;
+
+      const itemsContainer = document.getElementById('printItemsContainer');
+      itemsContainer.innerHTML = surveys.map((s, idx) => `
+        <div class="print-card p-4 rounded-xl border border-slate-300">
+          <div class="flex items-center justify-between border-b pb-2 mb-3">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-base">ลำดับ ${idx + 1}. เสา ${s.poleId}</span>
+              <span class="px-2 py-0.5 rounded text-xs font-bold ${s.voltage === 'MV' ? 'bg-indigo-100 text-indigo-800' : 'bg-cyan-100 text-cyan-800'}">${s.voltage}</span>
+              <span class="text-xs font-semibold text-slate-600">(${s.category})</span>
+            </div>
+            <span class="text-xs font-bold ${s.status === 'completed' ? 'text-emerald-600' : (s.status === 'in_progress' ? 'text-amber-600' : 'text-red-600')}">
+              สถานะ: ${s.status === 'completed' ? 'แล้วเสร็จ' : (s.status === 'in_progress' ? 'กำลังทำ' : 'รอดำเนินการ')}
+            </span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-1">
+              <div class="text-xs font-bold text-red-600">ภาพก่อนดำเนินการ (Before)</div>
+              <div class="h-44 border rounded overflow-hidden flex items-center justify-center bg-slate-50">
+                ${s.beforePhoto ? `<img src="${s.beforePhoto}" class="w-full h-full object-contain" />` : '<span class="text-xs text-slate-400">ไม่มีภาพ</span>'}
+              </div>
+            </div>
+            <div class="space-y-1">
+              <div class="text-xs font-bold text-emerald-600">ภาพหลังดำเนินการ (After)</div>
+              <div class="h-44 border rounded overflow-hidden flex items-center justify-center bg-slate-50">
+                ${s.afterPhoto ? `<img src="${s.afterPhoto}" class="w-full h-full object-contain" />` : '<span class="text-xs text-slate-400">ยังไม่ปิดงาน / ไม่มีภาพ After</span>'}
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 mt-3 text-[11px] text-slate-700 bg-slate-50 p-2 rounded">
+            <div><b>พิกัด GPS:</b> ${s.lat ? `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}` : 'ไม่มีพิกัด'}</div>
+            <div><b>สถานที่:</b> ${s.landmark || '-'}</div>
+            <div><b>รถ/เครื่องมือ:</b> ${(s.vehicleTypes || []).join(', ')}</div>
+            <div class="col-span-3"><b>หมายเหตุหน้างาน:</b> ${s.notes || '-'}</div>
+            ${s.closureNotes ? `<div class="col-span-3 text-emerald-700"><b>ผลการปฏิบัติงาน:</b> ${s.closureNotes} (วันที่ ${new Date(s.completedDate).toLocaleDateString('th-TH')})</div>` : ''}
+          </div>
+        </div>
+      `).join('');
+
+      window.print();
+    }
+
+    async function reloadAllData() {
+      AppState.projects = await dbGetAll('projects');
+      AppState.surveys = await dbGetAll('surveys');
+    }
+
+    async function deleteSurvey(surveyId) {
+      if (confirm('ต้องการลบจุดสำรวจนี้ใช่หรือไม่?')) {
+        await dbDelete('surveys', surveyId);
+        broadcastRealtimeEvent('SURVEY_DELETE', { id: surveyId });
+        await reloadAllData();
+        renderUI();
+      }
+    }
+
+    async function editSurvey(surveyId) {
+      const s = AppState.surveys.find(x => x.id === surveyId);
+      if (s) {
+        openSurveyModal(true, s);
+      }
+    }
+
+    /* =========================================================
+       11. SETUP EVENT LISTENERS & DOM LIFECYCLE
+       ========================================================= */
+    document.addEventListener('DOMContentLoaded', async () => {
+      // 1. Initialize IndexedDB & Seed data
+      await initDatabase();
+      await seedInitialDataIfEmpty();
+      await reloadAllData();
+
+      // 2. Initialize Leaflet Map
+      initMainMap();
+
+      // 3. Initialize Realtime Sync Engine (Multi-Tab & Cloud Mesh)
+      initRealtimeEngine();
+
+      // 4. Render Initial View
+      renderUI();
+      fitMapToMarkers();
+
+      // Theme toggle
+      const btnTheme = document.getElementById('btnThemeToggle');
+      btnTheme.addEventListener('click', () => {
+        document.documentElement.classList.toggle('dark');
+        const isDark = document.documentElement.classList.contains('dark');
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      });
+
+      // Realtime Hub Modal Triggers
+      document.getElementById('btnOpenRealtimeModal').addEventListener('click', () => {
+        document.getElementById('inputRealtimeRoom').value = AppState.roomCode;
+        document.getElementById('inputRealtimeCrewName').value = AppState.crewName;
+        document.getElementById('modalRealtimeHub').classList.remove('hidden');
+      });
+      document.getElementById('btnCloseRealtimeModal').addEventListener('click', () => {
+        document.getElementById('modalRealtimeHub').classList.add('hidden');
+      });
+      document.getElementById('btnDoneRealtimeHub').addEventListener('click', () => {
+        document.getElementById('modalRealtimeHub').classList.add('hidden');
+      });
+
+      // Connect to Realtime Room Button
+      document.getElementById('btnConnectRealtimeRoom').addEventListener('click', () => {
+        const room = document.getElementById('inputRealtimeRoom').value.trim() || 'PEA-FEEDER-01';
+        const crew = document.getElementById('inputRealtimeCrewName').value.trim() || 'ทีมฮอทไลน์ 01';
+        AppState.roomCode = room;
+        AppState.crewName = crew;
+        localStorage.setItem('patrol_room', room);
+        localStorage.setItem('patrol_crew', crew);
+        connectToRealtimeCloud();
+        showRealtimeToast(`📡 เข้าร่วมห้องเรียลไทม์ [${room}] เรียบร้อยแล้ว`, 'success');
+      });
+
+      // Share Link to Room
+      document.getElementById('btnShareRealtimeLink').addEventListener('click', () => {
+        const url = window.location.origin + window.location.pathname + '?room=' + encodeURIComponent(AppState.roomCode);
+        navigator.clipboard.writeText(url).then(() => {
+          showRealtimeToast('📋 คัดลอกลิงก์ห้องเรียลไทม์แล้ว ส่งต่อให้ทีมงานได้ทันที');
+        }).catch(() => {
+          alert('ลิงก์ห้องของคุณ: ' + url);
+        });
+      });
+
+      // Live Crew Broadcast Checkbox
+      const chkLiveGps = document.getElementById('chkLiveCrewBroadcast');
+      chkLiveGps.addEventListener('change', (e) => {
+        toggleLiveCrewGpsBroadcast(e.target.checked);
+      });
+
+      // Filter Tabs
+      document.querySelectorAll('.filter-tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+          document.querySelectorAll('.filter-tab').forEach(t => {
+            t.className = 'filter-tab touch-target px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 flex-shrink-0 transition-all';
+          });
+          tab.className = 'filter-tab touch-target px-3 py-1.5 rounded-xl bg-indigo-600 text-white flex-shrink-0 transition-all';
+          AppState.activeFilter = tab.getAttribute('data-filter');
+          renderUI();
+        });
+      });
+
+      // Vehicle Filter Select
+      document.getElementById('selectFilterVehicle').addEventListener('change', (e) => {
+        AppState.vehicleFilter = e.target.value;
+        renderUI();
+      });
+
+      // Search input
+      const inputSearch = document.getElementById('inputSearch');
+      const btnClearSearch = document.getElementById('btnClearSearch');
+      inputSearch.addEventListener('input', (e) => {
+        AppState.searchQuery = e.target.value;
+        btnClearSearch.classList.toggle('hidden', !e.target.value);
+        renderUI();
+      });
+      btnClearSearch.addEventListener('click', () => {
+        inputSearch.value = '';
+        AppState.searchQuery = '';
+        btnClearSearch.classList.add('hidden');
+        renderUI();
+      });
+
+      // View switcher (Cards vs Table)
+      const btnViewCards = document.getElementById('btnViewCards');
+      const btnViewTable = document.getElementById('btnViewTable');
+      const viewCards = document.getElementById('viewContainerCards');
+      const viewTable = document.getElementById('viewContainerTable');
+
+      btnViewCards.addEventListener('click', () => {
+        AppState.viewMode = 'cards';
+        viewCards.classList.remove('hidden');
+        viewTable.classList.add('hidden');
+        btnViewCards.className = 'touch-target px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm transition-all';
+        btnViewTable.className = 'touch-target px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 text-slate-600 dark:text-slate-400 transition-all';
+      });
+
+      btnViewTable.addEventListener('click', () => {
+        AppState.viewMode = 'table';
+        viewCards.classList.add('hidden');
+        viewTable.classList.remove('hidden');
+        btnViewTable.className = 'touch-target px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm transition-all';
+        btnViewCards.className = 'touch-target px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 text-slate-600 dark:text-slate-400 transition-all';
+      });
+
+      // Mobile Bottom Nav Handlers
+      document.getElementById('mobNavProjects').addEventListener('click', () => {
+        document.getElementById('modalProjects').classList.remove('hidden');
+        renderProjectModal();
+      });
+      document.getElementById('mobNavMap').addEventListener('click', () => {
+        document.getElementById('rightMapContainer').scrollIntoView({ behavior: 'smooth' });
+      });
+      document.getElementById('mobNavNew').addEventListener('click', () => openSurveyModal(false));
+      document.getElementById('mobNavList').addEventListener('click', () => {
+        document.getElementById('leftContainer').scrollIntoView({ behavior: 'smooth' });
+      });
+
+      // Header Buttons
+      document.getElementById('btnHeaderNewSurvey').addEventListener('click', () => openSurveyModal(false));
+      document.getElementById('btnEmptyNewSurvey').addEventListener('click', () => openSurveyModal(false));
+      document.getElementById('btnOpenProjectModal').addEventListener('click', () => {
+        document.getElementById('modalProjects').classList.remove('hidden');
+        renderProjectModal();
+      });
+      document.getElementById('btnCloseProjectModal').addEventListener('click', () => {
+        document.getElementById('modalProjects').classList.add('hidden');
+      });
+
+      // Export / Import Project File
+      document.getElementById('btnExportProject').addEventListener('click', exportProjectBackup);
+      document.getElementById('btnImportProject').addEventListener('click', () => {
+        document.getElementById('inputImportFile').click();
+      });
+      document.getElementById('inputImportFile').addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          importProjectBackup(e.target.files[0]);
+          e.target.value = '';
+        }
+      });
+
+      // Export CSV & Print PDF
+      document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
+      document.getElementById('btnPrintReport').addEventListener('click', preparePrintReport);
+
+      // Voltage toggle in form
+      document.getElementById('btnVoltageMV').addEventListener('click', () => setFormVoltage('MV'));
+      document.getElementById('btnVoltageLV').addEventListener('click', () => setFormVoltage('LV'));
+
+      // Vehicle Badges in form
+      document.querySelectorAll('#vehicleBadgeContainer .vehicle-pill').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const v = btn.getAttribute('data-vehicle');
+          if (AppState.selectedVehicles.has(v)) {
+            if (AppState.selectedVehicles.size > 1) {
+              AppState.selectedVehicles.delete(v);
+            }
+          } else {
+            AppState.selectedVehicles.add(v);
+          }
+          updateVehicleBadgesUI();
+        });
+      });
+
+      // Before Photo Dropzone & Auto EXIF
+      const dropzone = document.getElementById('beforePhotoDropzone');
+      const inputBefore = document.getElementById('inputBeforePhoto');
+      dropzone.addEventListener('click', (e) => {
+        if (e.target.closest('#btnRemoveBeforePhoto')) return;
+        inputBefore.click();
+      });
+
+      inputBefore.addEventListener('change', async (e) => {
+        if (e.target.files.length > 0) {
+          const file = e.target.files[0];
+          
+          const gps = await extractGpsFromPhoto(file);
+          if (gps) {
+            document.getElementById('formLat').value = gps.lat.toFixed(6);
+            document.getElementById('formLng').value = gps.lng.toFixed(6);
+            updateGpsStatusBadge(gps.lat, gps.lng, 'exif');
+          }
+
+          const compressed = await compressImageFile(file);
+          AppState.tempBeforePhotoBase64 = compressed;
+          document.getElementById('beforePhotoPreview').src = compressed;
+          document.getElementById('beforePhotoPlaceholder').classList.add('hidden');
+          document.getElementById('beforePhotoPreviewContainer').classList.remove('hidden');
+        }
+      });
+
+      document.getElementById('btnRemoveBeforePhoto').addEventListener('click', (e) => {
+        e.stopPropagation();
+        AppState.tempBeforePhotoBase64 = null;
+        document.getElementById('beforePhotoPreview').src = '';
+        document.getElementById('beforePhotoPlaceholder').classList.remove('hidden');
+        document.getElementById('beforePhotoPreviewContainer').classList.add('hidden');
+        inputBefore.value = '';
+      });
+
+      // Geolocation buttons in form
+      document.getElementById('btnGetDeviceGps').addEventListener('click', () => {
+        if (!navigator.geolocation) {
+          alert('อุปกรณ์ไม่รองรับ GPS');
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            document.getElementById('formLat').value = lat.toFixed(6);
+            document.getElementById('formLng').value = lng.toFixed(6);
+            updateGpsStatusBadge(lat, lng, 'device');
+          },
+          (err) => alert('ไม่สามารถดึง GPS ได้: ' + err.message),
+          { enableHighAccuracy: true }
+        );
+      });
+
+      document.getElementById('btnOpenMapPicker').addEventListener('click', () => {
+        const curLat = parseFloat(document.getElementById('formLat').value);
+        const curLng = parseFloat(document.getElementById('formLng').value);
+        openMapPickerModal(curLat, curLng);
+
+        document.getElementById('btnConfirmPickerCoord').onclick = () => {
+          if (AppState.currentTempLocation) {
+            document.getElementById('formLat').value = AppState.currentTempLocation.lat.toFixed(6);
+            document.getElementById('formLng').value = AppState.currentTempLocation.lng.toFixed(6);
+            updateGpsStatusBadge(AppState.currentTempLocation.lat, AppState.currentTempLocation.lng, 'picker');
+            document.getElementById('modalMapPicker').classList.add('hidden');
+          }
+        };
+      });
+
+      document.getElementById('btnCloseMapPicker').addEventListener('click', () => {
+        document.getElementById('modalMapPicker').classList.add('hidden');
+      });
+
+      document.getElementById('btnPickerCurrentGps').addEventListener('click', () => {
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(pos => {
+            setPickerLocation(pos.coords.latitude, pos.coords.longitude);
+          }, null, { enableHighAccuracy: true });
+        }
+      });
+
+      // Survey Form Submit (Save Locally + Broadcast Realtime)
+      document.getElementById('formSurvey').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const poleId = document.getElementById('formPoleId').value.trim();
+        if (!poleId) {
+          alert('กรุณากรอกรหัสเสา / จุดอ้างอิง');
+          return;
+        }
+
+        if (!AppState.tempBeforePhotoBase64) {
+          alert('กรุณาถ่ายภาพหรืออัปโหลดภาพก่อนดำเนินการ (Before Photo)');
+          return;
+        }
+
+        const latVal = parseFloat(document.getElementById('formLat').value);
+        const lngVal = parseFloat(document.getElementById('formLng').value);
+
+        const newSurvey = {
+          id: AppState.editingSurveyId || 'srv-' + Date.now(),
+          projectId: AppState.currentProjectId,
+          poleId: poleId,
+          landmark: document.getElementById('formLandmark').value.trim(),
+          voltage: document.getElementById('formVoltage').value,
+          category: document.getElementById('formCategory').value,
+          vehicleTypes: Array.from(AppState.selectedVehicles),
+          notes: document.getElementById('formNotes').value.trim(),
+          lat: isNaN(latVal) ? null : latVal,
+          lng: isNaN(lngVal) ? null : lngVal,
+          gpsSource: (isNaN(latVal) || isNaN(lngVal)) ? 'none' : 'manual',
+          status: document.getElementById('formStatus').value,
+          beforePhoto: AppState.tempBeforePhotoBase64,
+          afterPhoto: null,
+          surveyDate: new Date().toISOString(),
+          completedDate: null,
+          closureNotes: ''
+        };
+
+        if (AppState.editingSurveyId) {
+          const prev = AppState.surveys.find(s => s.id === AppState.editingSurveyId);
+          if (prev) {
+            newSurvey.afterPhoto = prev.afterPhoto;
+            newSurvey.completedDate = prev.completedDate;
+            newSurvey.closureNotes = prev.closureNotes;
+          }
+        }
+
+        await dbPut('surveys', newSurvey);
+        broadcastRealtimeEvent('SURVEY_SAVE', newSurvey);
+
+        await reloadAllData();
+        renderUI();
+        document.getElementById('modalSurveyForm').classList.add('hidden');
+        showRealtimeToast(`⚡ บันทึกและซิงค์สดเสา ${newSurvey.poleId} เรียบร้อยแล้ว`, 'success');
+      });
+
+      document.getElementById('btnCloseSurveyModal').addEventListener('click', () => {
+        document.getElementById('modalSurveyForm').classList.add('hidden');
+      });
+      document.getElementById('btnCancelSurvey').addEventListener('click', () => {
+        document.getElementById('modalSurveyForm').classList.add('hidden');
+      });
+
+      // Job Closure Form Submit (Save Locally + Broadcast Realtime)
+      const dropzoneAfter = document.getElementById('closureAfterDropzone');
+      const inputAfter = document.getElementById('inputAfterPhoto');
+      dropzoneAfter.addEventListener('click', (e) => {
+        if (e.target.closest('#btnRemoveAfterPhoto')) return;
+        inputAfter.click();
+      });
+
+      inputAfter.addEventListener('change', async (e) => {
+        if (e.target.files.length > 0) {
+          const file = e.target.files[0];
+          const compressed = await compressImageFile(file);
+          AppState.tempAfterPhotoBase64 = compressed;
+          document.getElementById('closureAfterImg').src = compressed;
+          document.getElementById('closureAfterPlaceholder').classList.add('hidden');
+          document.getElementById('closureAfterPreviewContainer').classList.remove('hidden');
+        }
+      });
+
+      document.getElementById('btnRemoveAfterPhoto').addEventListener('click', (e) => {
+        e.stopPropagation();
+        AppState.tempAfterPhotoBase64 = null;
+        document.getElementById('closureAfterImg').src = '';
+        document.getElementById('closureAfterPlaceholder').classList.remove('hidden');
+        document.getElementById('closureAfterPreviewContainer').classList.add('hidden');
+        inputAfter.value = '';
+      });
+
+      document.getElementById('formJobClosure').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const surveyId = document.getElementById('closureSurveyId').value;
+        const survey = AppState.surveys.find(s => s.id === surveyId);
+        if (!survey) return;
+
+        survey.afterPhoto = AppState.tempAfterPhotoBase64;
+        survey.status = 'completed';
+        survey.completedDate = document.getElementById('closureCompletedDate').value || new Date().toISOString();
+        survey.closureNotes = document.getElementById('closureNotes').value.trim();
+
+        await dbPut('surveys', survey);
+        broadcastRealtimeEvent('JOB_CLOSURE', survey);
+
+        await reloadAllData();
+        renderUI();
+        document.getElementById('modalJobClosure').classList.add('hidden');
+        showRealtimeToast(`🟢 ปิดงานและกระจายสัญญาณสดเสา ${survey.poleId} สำเร็จ`, 'success');
+      });
+
+      document.getElementById('btnCloseJobClosure').addEventListener('click', () => {
+        document.getElementById('modalJobClosure').classList.add('hidden');
+      });
+      document.getElementById('btnCancelClosure').addEventListener('click', () => {
+        document.getElementById('modalJobClosure').classList.add('hidden');
+      });
+
+      // Create New Project Form
+      document.getElementById('formNewProject').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = document.getElementById('inputNewProjectName');
+        const name = input.value.trim();
+        if (!name) return;
+
+        const newP = {
+          id: 'proj-' + Date.now(),
+          name: name,
+          description: 'โครงการสำรวจบำรุงรักษา',
+          createdAt: new Date().toISOString()
+        };
+
+        await dbPut('projects', newP);
+        await reloadAllData();
+        AppState.currentProjectId = newP.id;
+        input.value = '';
+        renderUI();
+        renderProjectModal();
+      });
+
+      // Check URL parameters for Room code (e.g., ?room=PEA-02)
+      const urlParams = new URLSearchParams(window.location.search);
+      const paramRoom = urlParams.get('room');
+      if (paramRoom) {
+        AppState.roomCode = paramRoom;
+        localStorage.setItem('patrol_room', paramRoom);
+        connectToRealtimeCloud();
+      }
+
+    });
+  </script>
+</body>
+</html>
