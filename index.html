@@ -2110,39 +2110,51 @@
        7. EXIF EXTRACTION & PHOTO COMPRESSION UTILITIES
        ========================================================= */
     function compressImageFile(file, maxWidth = 1280, maxHeight = 1280, quality = 0.75) {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve) => {
+        if (!file) { resolve(null); return; }
         const reader = new FileReader();
         reader.onload = (e) => {
+          const rawDataUrl = e.target.result;
           const img = new Image();
           img.onload = () => {
-            let width = img.width;
-            let height = img.height;
+            try {
+              let width = img.width || 800;
+              let height = img.height || 600;
 
-            if (width > height) {
-              if (width > maxWidth) {
-                height = Math.round((height * maxWidth) / width);
-                width = maxWidth;
+              if (width > height) {
+                if (width > maxWidth) {
+                  height = Math.round((height * maxWidth) / width);
+                  width = maxWidth;
+                }
+              } else {
+                if (height > maxHeight) {
+                  width = Math.round((width * maxHeight) / height);
+                  height = maxHeight;
+                }
               }
-            } else {
-              if (height > maxHeight) {
-                width = Math.round((width * maxHeight) / height);
-                height = maxHeight;
-              }
+
+              const canvas = document.createElement('canvas');
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, width, height);
+
+              const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+              resolve(compressedBase64);
+            } catch (err) {
+              console.warn('Canvas compress notice, using DataURL fallback:', err);
+              resolve(rawDataUrl);
             }
-
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-
-            const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-            resolve(compressedBase64);
           };
-          img.onerror = reject;
-          img.src = e.target.result;
+          img.onerror = () => {
+            console.warn('Image decode notice, using DataURL fallback');
+            resolve(rawDataUrl);
+          };
+          img.src = rawDataUrl;
         };
-        reader.onerror = reject;
+        reader.onerror = () => {
+          resolve(null);
+        };
         reader.readAsDataURL(file);
       });
     }
@@ -2233,9 +2245,11 @@
       updateGpsStatusBadge(null, null);
 
       document.getElementById('beforePhotoPlaceholder').classList.remove('hidden');
-      document.getElementById('beforePhotoPreviewContainer').classList.add('hidden');
       document.getElementById('beforePhotoPreview').src = '';
-      document.getElementById('inputBeforePhoto').value = '';
+      const inCam = document.getElementById('inputBeforeCamera');
+      const inGal = document.getElementById('inputBeforeGallery');
+      if (inCam) inCam.value = '';
+      if (inGal) inGal.value = '';
     }
 
     function setFormVoltage(vol) {
@@ -3116,57 +3130,56 @@
       // Survey Form Submit (Save Locally + Broadcast Realtime)
       document.getElementById('formSurvey').addEventListener('submit', async (e) => {
         e.preventDefault();
-
-        const poleId = document.getElementById('formPoleId').value.trim();
-        if (!poleId) {
-          alert('กรุณากรอกรหัสเสา / จุดอ้างอิง');
-          return;
-        }
-
-        if (!AppState.tempBeforePhotoBase64) {
-          alert('กรุณาถ่ายภาพหรืออัปโหลดภาพก่อนดำเนินการ (Before Photo)');
-          return;
-        }
-
-        const latVal = parseFloat(document.getElementById('formLat').value);
-        const lngVal = parseFloat(document.getElementById('formLng').value);
-
-        const newSurvey = {
-          id: AppState.editingSurveyId || 'srv-' + Date.now(),
-          projectId: AppState.currentProjectId,
-          poleId: poleId,
-          landmark: document.getElementById('formLandmark').value.trim(),
-          voltage: document.getElementById('formVoltage').value,
-          category: document.getElementById('formCategory').value,
-          vehicleTypes: Array.from(AppState.selectedVehicles),
-          notes: document.getElementById('formNotes').value.trim(),
-          lat: isNaN(latVal) ? null : latVal,
-          lng: isNaN(lngVal) ? null : lngVal,
-          gpsSource: (isNaN(latVal) || isNaN(lngVal)) ? 'none' : 'manual',
-          status: document.getElementById('formStatus').value,
-          beforePhoto: AppState.tempBeforePhotoBase64,
-          afterPhoto: null,
-          surveyDate: new Date().toISOString(),
-          completedDate: null,
-          closureNotes: ''
-        };
-
-        if (AppState.editingSurveyId) {
-          const prev = AppState.surveys.find(s => s.id === AppState.editingSurveyId);
-          if (prev) {
-            newSurvey.afterPhoto = prev.afterPhoto;
-            newSurvey.completedDate = prev.completedDate;
-            newSurvey.closureNotes = prev.closureNotes;
+        try {
+          const poleId = document.getElementById('formPoleId').value.trim();
+          if (!poleId) {
+            alert('กรุณากรอกรหัสเสา / จุดอ้างอิง');
+            return;
           }
+
+          const latVal = parseFloat(document.getElementById('formLat').value);
+          const lngVal = parseFloat(document.getElementById('formLng').value);
+
+          const newSurvey = {
+            id: AppState.editingSurveyId || 'srv-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+            projectId: AppState.currentProjectId,
+            poleId: poleId,
+            landmark: document.getElementById('formLandmark').value.trim(),
+            voltage: document.getElementById('formVoltage').value,
+            category: document.getElementById('formCategory').value,
+            vehicleTypes: Array.from(AppState.selectedVehicles),
+            notes: document.getElementById('formNotes').value.trim(),
+            lat: isNaN(latVal) ? null : latVal,
+            lng: isNaN(lngVal) ? null : lngVal,
+            gpsSource: (isNaN(latVal) || isNaN(lngVal)) ? 'none' : 'manual',
+            status: document.getElementById('formStatus').value,
+            beforePhoto: AppState.tempBeforePhotoBase64 || null,
+            afterPhoto: null,
+            surveyDate: new Date().toISOString(),
+            completedDate: null,
+            closureNotes: ''
+          };
+
+          if (AppState.editingSurveyId) {
+            const prev = AppState.surveys.find(s => s.id === AppState.editingSurveyId);
+            if (prev) {
+              newSurvey.afterPhoto = prev.afterPhoto;
+              newSurvey.completedDate = prev.completedDate;
+              newSurvey.closureNotes = prev.closureNotes;
+            }
+          }
+
+          await dbPut('surveys', newSurvey);
+          broadcastRealtimeEvent('SURVEY_SAVE', newSurvey);
+
+          await reloadAllData();
+          renderUI();
+          document.getElementById('modalSurveyForm').classList.add('hidden');
+          showRealtimeToast(`⚡ บันทึกเสา ${newSurvey.poleId} สำเร็จเรียบร้อยแล้ว`, 'success');
+        } catch (err) {
+          console.error('Survey Save Error:', err);
+          alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + err.message);
         }
-
-        await dbPut('surveys', newSurvey);
-        broadcastRealtimeEvent('SURVEY_SAVE', newSurvey);
-
-        await reloadAllData();
-        renderUI();
-        document.getElementById('modalSurveyForm').classList.add('hidden');
-        showRealtimeToast(`⚡ บันทึกและซิงค์สดเสา ${newSurvey.poleId} เรียบร้อยแล้ว`, 'success');
       });
 
       document.getElementById('btnCloseSurveyModal').addEventListener('click', () => {
