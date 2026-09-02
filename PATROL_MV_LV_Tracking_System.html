@@ -183,11 +183,23 @@
       to { transform: translateY(0); opacity: 1; }
     }
 
-    /* Print Stylesheet for Report PDF */
+    /* Print Stylesheet for Report PDF (1 Job = Exactly 1 A4 Page) */
     @media print {
+      @page {
+        size: A4 portrait;
+        margin: 6mm 10mm 6mm 10mm;
+      }
+      *, *::before, *::after {
+        box-shadow: none !important;
+        text-shadow: none !important;
+      }
       body {
         background: white !important;
         color: black !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
       .no-print {
         display: none !important;
@@ -195,14 +207,23 @@
       .print-only {
         display: block !important;
       }
-      .page-break {
-        page-break-before: always;
+      .print-page {
+        page-break-after: always !important;
+        break-after: page !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        height: 275mm !important;
+        max-height: 278mm !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        box-sizing: border-box !important;
+        padding: 2mm 0 !important;
+        overflow: hidden !important;
       }
-      .print-card {
-        break-inside: avoid;
-        border: 1px solid #cbd5e1 !important;
-        background: white !important;
-        color: black !important;
+      .print-page:last-child {
+        page-break-after: auto !important;
+        break-after: auto !important;
       }
     }
     @media screen {
@@ -1082,57 +1103,9 @@
   </div>
 
   <!-- ================= PRINTABLE SUMMARY REPORT TEMPLATE (PRINT ONLY) ================= -->
-  <div id="printReportContainer" class="print-only p-8 max-w-5xl mx-auto bg-white text-slate-900">
-    <!-- Header -->
-    <div class="border-b-2 border-slate-900 pb-4 mb-6 flex items-start justify-between">
-      <div>
-        <h1 class="text-2xl font-black tracking-tight text-slate-900">รายงานสรุปผลการสำรวจและบำรุงรักษาระบบจำหน่าย</h1>
-        <p class="text-sm font-semibold text-slate-600">PATROL MV & LV Maintenance Tracking Report</p>
-      </div>
-      <div class="text-right text-xs">
-        <p class="font-bold text-slate-800">โครงการ: <span id="printProjectName">ฟีดเดอร์ 01</span></p>
-        <p class="text-slate-500">วันที่ออกรายงาน: <span id="printReportDate">--</span></p>
-      </div>
-    </div>
-
-    <!-- Summary Stats Table for Supervisor -->
-    <div class="grid grid-cols-4 gap-4 mb-6 text-center">
-      <div class="p-3 border border-slate-300 rounded-lg">
-        <div class="text-xs text-slate-500">จุดสำรวจทั้งหมด</div>
-        <div id="printStatTotal" class="text-xl font-bold">0</div>
-      </div>
-      <div class="p-3 border border-slate-300 rounded-lg">
-        <div class="text-xs text-red-600 font-bold">รอดำเนินการ</div>
-        <div id="printStatPending" class="text-xl font-bold text-red-600">0</div>
-      </div>
-      <div class="p-3 border border-slate-300 rounded-lg">
-        <div class="text-xs text-amber-600 font-bold">กำลังดำเนินการ</div>
-        <div id="printStatInProgress" class="text-xl font-bold text-amber-600">0</div>
-      </div>
-      <div class="p-3 border border-slate-300 rounded-lg">
-        <div class="text-xs text-emerald-600 font-bold">แล้วเสร็จ</div>
-        <div id="printStatCompleted" class="text-xl font-bold text-emerald-600">0</div>
-      </div>
-    </div>
-
-    <!-- Survey Points Comparison Grid -->
-    <div id="printItemsContainer" class="space-y-6">
-      <!-- Print cards rendered dynamically -->
-    </div>
-
-    <!-- Signature Block -->
-    <div class="mt-12 pt-8 border-t border-slate-300 grid grid-cols-2 gap-8 text-center text-xs page-break">
-      <div>
-        <p class="mb-14">ลงชื่อ ........................................................... ผู้สำรวจ/ผู้ควบคุมงาน</p>
-        <p class="font-bold">( ........................................................... )</p>
-        <p class="text-slate-500">ตำแหน่ง: วิศวกร / ช่างชำนาญการ</p>
-      </div>
-      <div>
-        <p class="mb-14">ลงชื่อ ........................................................... ผู้อนุมัติ/หัวหน้าแผนก</p>
-        <p class="font-bold">( ........................................................... )</p>
-        <p class="text-slate-500">ตำแหน่ง: หัวหน้าแผนกบำรุงรักษาระบบจำหน่าย</p>
-      </div>
-    </div>
+  <div id="printReportContainer" class="print-only w-full bg-white text-slate-900">
+    <!-- Survey Points: 1 Page per Job rendered dynamically -->
+    <div id="printItemsContainer"></div>
   </div>
 
   <!-- ================= APPLICATION SCRIPTS ================= -->
@@ -2521,52 +2494,134 @@
       const activeProj = AppState.projects.find(p => p.id === AppState.currentProjectId);
       const surveys = getFilteredSurveys();
 
-      document.getElementById('printProjectName').innerText = activeProj ? activeProj.name : '-';
-      document.getElementById('printReportDate').innerText = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-      document.getElementById('printStatTotal').innerText = surveys.length;
-      document.getElementById('printStatPending').innerText = surveys.filter(s => s.status === 'pending').length;
-      document.getElementById('printStatInProgress').innerText = surveys.filter(s => s.status === 'in_progress').length;
-      document.getElementById('printStatCompleted').innerText = surveys.filter(s => s.status === 'completed').length;
+      const totalCount = surveys.length;
+      const projectName = activeProj ? activeProj.name : 'โครงการสำรวจระบบจำหน่าย';
+      const reportDateStr = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
       const itemsContainer = document.getElementById('printItemsContainer');
-      itemsContainer.innerHTML = surveys.map((s, idx) => `
-        <div class="print-card p-4 rounded-xl border border-slate-300">
-          <div class="flex items-center justify-between border-b pb-2 mb-3">
-            <div class="flex items-center gap-2">
-              <span class="font-bold text-base">ลำดับ ${idx + 1}. เสา ${s.poleId}</span>
-              <span class="px-2 py-0.5 rounded text-xs font-bold ${s.voltage === 'MV' ? 'bg-indigo-100 text-indigo-800' : 'bg-cyan-100 text-cyan-800'}">${s.voltage}</span>
-              <span class="text-xs font-semibold text-slate-600">(${s.category})</span>
-            </div>
-            <span class="text-xs font-bold ${s.status === 'completed' ? 'text-emerald-600' : (s.status === 'in_progress' ? 'text-amber-600' : 'text-red-600')}">
-              สถานะ: ${s.status === 'completed' ? 'แล้วเสร็จ' : (s.status === 'in_progress' ? 'กำลังทำ' : 'รอดำเนินการ')}
-            </span>
-          </div>
+      
+      if (surveys.length === 0) {
+        itemsContainer.innerHTML = '<div class="p-8 text-center text-slate-500 font-bold">ไม่มีข้อมูลจุดสำรวจสำหรับพิมพ์รายงาน</div>';
+        window.print();
+        return;
+      }
 
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-1">
-              <div class="text-xs font-bold text-red-600">ภาพก่อนดำเนินการ (Before)</div>
-              <div class="h-44 border rounded overflow-hidden flex items-center justify-center bg-slate-50">
-                ${s.beforePhoto ? `<img src="${s.beforePhoto}" class="w-full h-full object-contain" />` : '<span class="text-xs text-slate-400">ไม่มีภาพ</span>'}
+      const vehicleNames = {
+        bucket: '🚜 รถกระเช้า',
+        crane: '🏗️ รถเครน',
+        truck6: '🚚 รถ 6 ล้อ',
+        pickup: '🚙 รถกระบะตรวจการ',
+        climb: '🧗‍♂️ ชุดเดินเท้า'
+      };
+
+      itemsContainer.innerHTML = surveys.map((s, idx) => {
+        const isMV = s.voltage === 'MV';
+        const statusText = s.status === 'completed' ? 'แล้วเสร็จ' : (s.status === 'in_progress' ? 'กำลังทำ' : 'รอดำเนินการ');
+        const statusBg = s.status === 'completed' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : (s.status === 'in_progress' ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-red-100 text-red-800 border-red-300');
+        const vList = (s.vehicleTypes || []).map(v => vehicleNames[v] || v).join(', ') || '-';
+
+        return `
+          <div class="print-page font-sans text-slate-900 bg-white">
+            
+            <!-- 1. Header Section -->
+            <div class="border-b-2 border-slate-900 pb-1.5 mb-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 rounded-lg bg-indigo-700 text-white flex items-center justify-center font-black text-sm">⚡</div>
+                  <div>
+                    <h1 class="text-sm font-black tracking-tight text-slate-900 leading-tight">รายงานสรุปผลการสำรวจและบำรุงรักษาระบบจำหน่าย (PATROL MV & LV)</h1>
+                    <p class="text-[10px] font-semibold text-slate-500">การไฟฟ้าส่วนภูมิภาค (PEA Field Patrol & Maintenance Report)</p>
+                  </div>
+                </div>
+                <div class="text-right text-[10px]">
+                  <p class="font-bold text-slate-800">โครงการ: <span class="text-indigo-900 font-black">${projectName}</span></p>
+                  <p class="text-slate-500">วันที่: ${reportDateStr} | <b>จุดที่ ${idx + 1} / ${totalCount}</b></p>
+                </div>
               </div>
             </div>
-            <div class="space-y-1">
-              <div class="text-xs font-bold text-emerald-600">ภาพหลังดำเนินการ (After)</div>
-              <div class="h-44 border rounded overflow-hidden flex items-center justify-center bg-slate-50">
-                ${s.afterPhoto ? `<img src="${s.afterPhoto}" class="w-full h-full object-contain" />` : '<span class="text-xs text-slate-400">ยังไม่ปิดงาน / ไม่มีภาพ After</span>'}
+
+            <!-- 2. Pole Info Bar -->
+            <div class="flex items-center justify-between bg-slate-100 border border-slate-300 px-3 py-1.5 rounded-lg mb-2">
+              <div class="flex items-center gap-2">
+                <span class="font-black text-base text-slate-900">ลำดับที่ ${idx + 1}. เสา ${s.poleId}</span>
+                <span class="px-2 py-0.5 rounded text-[11px] font-extrabold text-white ${isMV ? 'bg-indigo-700' : 'bg-cyan-700'}">${s.voltage}</span>
+                <span class="text-xs font-bold text-slate-700">(${s.category})</span>
+              </div>
+              <span class="px-2.5 py-0.5 rounded border text-xs font-extrabold ${statusBg}">
+                สถานะ: ${statusText}
+              </span>
+            </div>
+
+            <!-- 3. Side-by-Side Photos (Large & Balanced) -->
+            <div class="grid grid-cols-2 gap-3 flex-1 mb-2 items-center">
+              <!-- Before Box -->
+              <div class="h-full flex flex-col border border-slate-300 rounded-xl overflow-hidden bg-slate-50">
+                <div class="bg-red-50 text-red-700 font-bold text-xs px-3 py-1 border-b border-slate-200 flex items-center justify-between">
+                  <span>🔴 ภาพก่อนดำเนินการ (Before)</span>
+                  <span class="text-[10px] text-slate-500">สภาพความชำรุด</span>
+                </div>
+                <div class="flex-1 flex items-center justify-center p-2 bg-white min-h-[260px] max-h-[360px]">
+                  ${s.beforePhoto ? `<img src="${s.beforePhoto}" alt="Before Photo" class="max-h-full max-w-full object-contain rounded" />` : '<div class="text-slate-400 text-xs">ไม่มีภาพถ่ายก่อนทำ</div>'}
+                </div>
+              </div>
+
+              <!-- After Box -->
+              <div class="h-full flex flex-col border border-slate-300 rounded-xl overflow-hidden bg-slate-50">
+                <div class="bg-emerald-50 text-emerald-700 font-bold text-xs px-3 py-1 border-b border-slate-200 flex items-center justify-between">
+                  <span>🟢 ภาพหลังดำเนินการ (After)</span>
+                  <span class="text-[10px] text-slate-500">ผลงานหลังแก้ไข</span>
+                </div>
+                <div class="flex-1 flex items-center justify-center p-2 bg-white min-h-[260px] max-h-[360px]">
+                  ${s.afterPhoto ? `<img src="${s.afterPhoto}" alt="After Photo" class="max-h-full max-w-full object-contain rounded" />` : '<div class="text-slate-400 text-xs italic">ยังไม่ปิดงาน / ไม่มีภาพ After</div>'}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div class="grid grid-cols-3 gap-2 mt-3 text-[11px] text-slate-700 bg-slate-50 p-2 rounded">
-            <div><b>พิกัด GPS:</b> ${s.lat ? `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}` : 'ไม่มีพิกัด'}</div>
-            <div><b>สถานที่:</b> ${s.landmark || '-'}</div>
-            <div><b>รถ/เครื่องมือ:</b> ${(s.vehicleTypes || []).join(', ')}</div>
-            <div class="col-span-3"><b>หมายเหตุหน้างาน:</b> ${s.notes || '-'}</div>
-            ${s.closureNotes ? `<div class="col-span-3 text-emerald-700"><b>ผลการปฏิบัติงาน:</b> ${s.closureNotes} (วันที่ ${new Date(s.completedDate).toLocaleDateString('th-TH')})</div>` : ''}
+            <!-- 4. Job Details Table -->
+            <div class="mb-2">
+              <table class="w-full text-xs border border-slate-300 rounded-lg overflow-hidden">
+                <tbody>
+                  <tr class="border-b border-slate-200 bg-slate-50">
+                    <td class="p-1.5 font-bold text-slate-700 w-1/4 border-r border-slate-200">📍 พิกัด GPS</td>
+                    <td class="p-1.5 font-mono text-indigo-900 font-semibold w-1/4 border-r border-slate-200">${s.lat && s.lng ? `${s.lat.toFixed(6)}, ${s.lng.toFixed(6)}` : 'ไม่มีพิกัด'}</td>
+                    <td class="p-1.5 font-bold text-slate-700 w-1/4 border-r border-slate-200">🚩 จุดสังเกต/สถานที่</td>
+                    <td class="p-1.5 font-semibold text-slate-800 w-1/4">${s.landmark || '-'}</td>
+                  </tr>
+                  <tr class="border-b border-slate-200">
+                    <td class="p-1.5 font-bold text-slate-700 border-r border-slate-200">🚜 รถ/เครื่องมือที่ใช้</td>
+                    <td class="p-1.5 font-semibold text-slate-800 border-r border-slate-200" colspan="3">${vList}</td>
+                  </tr>
+                  <tr class="border-b border-slate-200 bg-slate-50">
+                    <td class="p-1.5 font-bold text-slate-700 border-r border-slate-200">📝 หมายเหตุหน้างาน</td>
+                    <td class="p-1.5 text-slate-800" colspan="3">${s.notes || '-'}</td>
+                  </tr>
+                  ${s.closureNotes ? `
+                    <tr class="bg-emerald-50/70">
+                      <td class="p-1.5 font-bold text-emerald-900 border-r border-slate-200">✅ ผลการปิดงาน</td>
+                      <td class="p-1.5 font-semibold text-emerald-900" colspan="3">${s.closureNotes} ${s.completedDate ? `(วันที่แล้วเสร็จ: ${new Date(s.completedDate).toLocaleDateString('th-TH')})` : ''}</td>
+                    </tr>
+                  ` : ''}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 5. Signature Footer Block -->
+            <div class="grid grid-cols-2 gap-4 text-center text-[10px] pt-2 border-t border-slate-300">
+              <div>
+                <p class="mb-7">ลงชื่อ ........................................................... ผู้สำรวจ/ปฏิบัติงาน</p>
+                <p class="font-bold">( ........................................................... )</p>
+                <p class="text-slate-500">ช่างชำนาญการ / พนักงานช่าง</p>
+              </div>
+              <div>
+                <p class="mb-7">ลงชื่อ ........................................................... ผู้ควบคุมงาน/อนุมัติ</p>
+                <p class="font-bold">( ........................................................... )</p>
+                <p class="text-slate-500">วิศวกร / หัวหน้าแผนกบำรุงรักษา</p>
+              </div>
+            </div>
+
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
 
       window.print();
     }
