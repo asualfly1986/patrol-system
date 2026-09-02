@@ -920,7 +920,7 @@
   </div>
 
   <!-- ================= MODAL: INTERACTIVE PIN PICKER ON MAP ================= -->
-  <div id="modalMapPicker" class="no-print fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-md flex flex-col p-2 sm:p-6">
+  <div id="modalMapPicker" class="no-print fixed inset-0 z-[100] hidden bg-slate-950/80 backdrop-blur-md flex flex-col p-2 sm:p-6">
     <div class="bg-white dark:bg-slate-900 w-full max-w-4xl mx-auto flex-1 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden">
       
       <!-- Picker Top Bar -->
@@ -936,11 +936,11 @@
         </div>
 
         <div class="flex items-center gap-2">
-          <button id="btnPickerCurrentGps" class="touch-target px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-bold flex items-center gap-1">
+          <button type="button" id="btnPickerCurrentGps" class="touch-target px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-bold flex items-center gap-1">
             <i data-lucide="navigation" class="w-3.5 h-3.5"></i>
             <span>ตำแหน่งฉัน</span>
           </button>
-          <button id="btnCloseMapPicker" class="touch-target p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+          <button type="button" id="btnCloseMapPicker" class="touch-target p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
             <i data-lucide="x" class="w-5 h-5"></i>
           </button>
         </div>
@@ -956,7 +956,7 @@
             <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">พิกัดที่เลือก</span>
             <span id="pickerCoordDisplay" class="font-mono font-bold text-indigo-400 text-sm">13.756300, 100.501800</span>
           </div>
-          <button id="btnConfirmPickerCoord" class="touch-target px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 active:scale-95 transition-all">
+          <button type="button" id="btnConfirmPickerCoord" class="touch-target px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 active:scale-95 transition-all">
             <i data-lucide="check" class="w-4 h-4"></i>
             <span>ยืนยันพิกัดนี้</span>
           </button>
@@ -3082,7 +3082,9 @@
       });
 
       // Geolocation buttons in form
-      document.getElementById('btnGetDeviceGps').addEventListener('click', () => {
+      document.getElementById('btnGetDeviceGps').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         if (!navigator.geolocation) {
           alert('อุปกรณ์ไม่รองรับ GPS');
           return;
@@ -3094,36 +3096,49 @@
             document.getElementById('formLat').value = lat.toFixed(6);
             document.getElementById('formLng').value = lng.toFixed(6);
             updateGpsStatusBadge(lat, lng, 'device');
+            showRealtimeToast('📍 ดึงพิกัด GPS จากมือถือเรียบร้อยแล้ว', 'success');
           },
           (err) => alert('ไม่สามารถดึง GPS ได้: ' + err.message),
           { enableHighAccuracy: true }
         );
       });
 
-      document.getElementById('btnOpenMapPicker').addEventListener('click', () => {
+      document.getElementById('btnOpenMapPicker').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         const curLat = parseFloat(document.getElementById('formLat').value);
         const curLng = parseFloat(document.getElementById('formLng').value);
         openMapPickerModal(curLat, curLng);
 
-        document.getElementById('btnConfirmPickerCoord').onclick = () => {
+        document.getElementById('btnConfirmPickerCoord').onclick = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
           if (AppState.currentTempLocation) {
             document.getElementById('formLat').value = AppState.currentTempLocation.lat.toFixed(6);
             document.getElementById('formLng').value = AppState.currentTempLocation.lng.toFixed(6);
             updateGpsStatusBadge(AppState.currentTempLocation.lat, AppState.currentTempLocation.lng, 'picker');
             document.getElementById('modalMapPicker').classList.add('hidden');
+            showRealtimeToast('📍 กำหนดพิกัดจากแผนที่เรียบร้อย', 'success');
           }
         };
       });
 
-      document.getElementById('btnCloseMapPicker').addEventListener('click', () => {
+      document.getElementById('btnCloseMapPicker').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         document.getElementById('modalMapPicker').classList.add('hidden');
       });
 
-      document.getElementById('btnPickerCurrentGps').addEventListener('click', () => {
+      document.getElementById('btnPickerCurrentGps').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(pos => {
             setPickerLocation(pos.coords.latitude, pos.coords.longitude);
-          }, null, { enableHighAccuracy: true });
+            if (AppState.pickerMap) {
+              AppState.pickerMap.setView([pos.coords.latitude, pos.coords.longitude], 17);
+            }
+          }, (err) => alert('ไม่สามารถดึง GPS ปัจจุบันได้: ' + err.message), { enableHighAccuracy: true });
         }
       });
 
