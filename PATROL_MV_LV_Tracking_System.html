@@ -293,7 +293,7 @@
             <i data-lucide="upload" class="w-4 h-4 text-emerald-500"></i>
             <span>Restore</span>
           </button>
-          <input type="file" id="inputImportFile" accept=".patrol,.json" class="hidden" />
+          <input type="file" id="inputImportFile" accept=".patrol,.json,.csv,text/csv,application/json" class="hidden" />
         </div>
 
         <!-- Theme Toggle -->
@@ -2420,27 +2420,111 @@
     async function importProjectBackup(file) {
       try {
         const text = await file.text();
-        const data = JSON.parse(text);
+        const fileName = file.name || 'imported_file';
+        let importedProjectName = fileName.replace(/\.[^/.]+$/, "");
+        let surveysToImport = [];
 
-        if (!data.project || !data.surveys) {
-          alert('รูปแบบไฟล์ .patrol ไม่ถูกต้อง');
+        // 1. Try parsing JSON
+        let isJson = false;
+        let data = null;
+        try {
+          data = JSON.parse(text);
+          isJson = true;
+        } catch (e) {
+          isJson = false;
+        }
+
+        if (isJson && data) {
+          // Case A: Standard .patrol format { project: {...}, surveys: [...] }
+          if (data.project && Array.isArray(data.surveys)) {
+            importedProjectName = data.project.name || importedProjectName;
+            surveysToImport = data.surveys;
+          }
+          // Case B: Plural format { projects: [...], surveys: [...] }
+          else if (Array.isArray(data.surveys)) {
+            if (Array.isArray(data.projects) && data.projects.length > 0) {
+              importedProjectName = data.projects[0].name || importedProjectName;
+            }
+            surveysToImport = data.surveys;
+          }
+          // Case C: Array of survey objects directly [ {...}, {...} ]
+          else if (Array.isArray(data)) {
+            surveysToImport = data;
+          }
+          // Case D: Object containing data/items/records array
+          else if (Array.isArray(data.data) || Array.isArray(data.items) || Array.isArray(data.records)) {
+            surveysToImport = data.data || data.items || data.records;
+          }
+          // Case E: Single survey object
+          else if (data.poleId) {
+            surveysToImport = [data];
+          }
+        } 
+        // 2. If not JSON, try parsing CSV
+        else if (text.includes(',') || text.includes(';') || text.includes('\t')) {
+          const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+          if (lines.length > 1) {
+            const separator = lines[0].includes(',') ? ',' : (lines[0].includes(';') ? ';' : '\t');
+            const headers = lines[0].split(separator).map(h => h.replace(/^["']|["']$/g, '').trim().toLowerCase());
+            
+            for (let i = 1; i < lines.length; i++) {
+              const cols = lines[i].split(separator).map(c => c.replace(/^["']|["']$/g, '').trim());
+              if (cols.length >= 2) {
+                const poleIdx = headers.findIndex(h => h.includes('เสา') || h.includes('pole'));
+                const latIdx = headers.findIndex(h => h.includes('lat') || h.includes('ละติจูด'));
+                const lngIdx = headers.findIndex(h => h.includes('lng') || h.includes('lon') || h.includes('ลองจิจูด'));
+                const volIdx = headers.findIndex(h => h.includes('แรงดัน') || h.includes('volt'));
+                const catIdx = headers.findIndex(h => h.includes('หมวด') || h.includes('cat'));
+                const noteIdx = headers.findIndex(h => h.includes('หมายเหตุ') || h.includes('note'));
+
+                surveysToImport.push({
+                  poleId: poleIdx !== -1 ? cols[poleIdx] : (cols[0] || `เสา-${i}`),
+                  voltage: (volIdx !== -1 && cols[volIdx] && cols[volIdx].toUpperCase().includes('LV')) ? 'LV' : 'MV',
+                  category: catIdx !== -1 ? cols[catIdx] : 'ต้นไม้ใกล้แนวสาย',
+                  lat: latIdx !== -1 ? parseFloat(cols[latIdx]) : null,
+                  lng: lngIdx !== -1 ? parseFloat(cols[lngIdx]) : null,
+                  notes: noteIdx !== -1 ? cols[noteIdx] : '',
+                  status: 'pending',
+                  vehicleTypes: ['bucket']
+                });
+              }
+            }
+          }
+        }
+
+        if (surveysToImport.length === 0) {
+          alert('⚠️ ไม่พบข้อมูลจุดสำรวจในไฟล์ที่เลือก กรุณาตรวจสอบว่าเป็นไฟล์สำรอง .patrol, .json หรือไฟล์ .csv ที่ถูกต้อง');
           return;
         }
 
         const newProjId = 'proj-' + Date.now();
         const importedProj = {
-          ...data.project,
           id: newProjId,
-          name: data.project.name + ' (นำเข้า)'
+          name: importedProjectName.includes('(นำเข้า)') ? importedProjectName : `${importedProjectName} (นำเข้า)`,
+          description: `นำเข้าจากไฟล์ ${fileName} เมื่อ ${new Date().toLocaleDateString('th-TH')}`
         };
 
         await dbPut('projects', importedProj);
 
-        for (const s of data.surveys) {
+        for (const s of surveysToImport) {
           const item = {
-            ...s,
-            id: 'srv-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-            projectId: newProjId
+            id: 'srv-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6),
+            projectId: newProjId,
+            poleId: s.poleId || s.pole_id || 'เสาไม่ระบุ',
+            landmark: s.landmark || s.location || '',
+            voltage: (s.voltage && s.voltage.toUpperCase() === 'LV') ? 'LV' : 'MV',
+            category: s.category || 'ต้นไม้ใกล้แนวสาย',
+            vehicleTypes: Array.isArray(s.vehicleTypes) ? s.vehicleTypes : (s.vehicle_types || ['bucket']),
+            notes: s.notes || s.remark || '',
+            lat: parseFloat(s.lat || s.latitude) || null,
+            lng: parseFloat(s.lng || s.longitude) || null,
+            gpsSource: s.gpsSource || 'import',
+            status: s.status || 'pending',
+            beforePhoto: s.beforePhoto || s.before_photo || s.photo || null,
+            afterPhoto: s.afterPhoto || s.after_photo || null,
+            surveyDate: s.surveyDate || new Date().toISOString(),
+            completedDate: s.completedDate || null,
+            closureNotes: s.closureNotes || null
           };
           await dbPut('surveys', item);
           broadcastRealtimeEvent('SURVEY_SAVE', item);
@@ -2450,8 +2534,10 @@
         AppState.currentProjectId = newProjId;
         renderUI();
         fitMapToMarkers();
-        alert(`นำเข้าโครงการ "${importedProj.name}" สำเร็จ (${data.surveys.length} จุดสำรวจ)`);
+        showRealtimeToast(`📥 นำเข้าโครงการ "${importedProj.name}" สำเร็จ (${surveysToImport.length} จุดสำรวจ)`, 'success');
+        alert(`✅ นำเข้าโครงการ "${importedProj.name}" สำเร็จเรียบร้อยแล้ว!\nจำนวนจุดสำรวจทั้งหมด: ${surveysToImport.length} จุด`);
       } catch (err) {
+        console.error('Import error:', err);
         alert('เกิดข้อผิดพลาดในการนำเข้าไฟล์: ' + err.message);
       }
     }
