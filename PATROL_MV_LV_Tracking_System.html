@@ -818,15 +818,23 @@
           </div>
 
           <!-- Upload Dropzone -->
-          <div id="beforePhotoDropzone" class="relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-2xl p-4 text-center cursor-pointer transition-all bg-slate-50/50 dark:bg-slate-800/30">
-            <input type="file" id="inputBeforePhoto" accept="image/*,.heic,.heif" capture="environment" class="hidden" />
+          <div id="beforePhotoDropzone" class="relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-2xl p-4 text-center transition-all bg-slate-50/50 dark:bg-slate-800/30">
+            <!-- Hidden File Inputs -->
+            <input type="file" id="inputBeforeCamera" accept="image/*,.heic,.heif" capture="environment" class="hidden" />
+            <input type="file" id="inputBeforeGallery" accept="image/*,.heic,.heif,image/heic,image/jpeg,image/png,image/webp" class="hidden" />
             
-            <div id="beforePhotoPlaceholder" class="flex flex-col items-center justify-center py-3">
-              <div class="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-2 shadow-inner">
-                <i data-lucide="camera" class="w-6 h-6"></i>
+            <div id="beforePhotoPlaceholder" class="flex flex-col items-center justify-center py-2">
+              <div class="flex items-center gap-2 mb-3">
+                <button type="button" id="btnPickCameraBefore" class="touch-target px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-indigo-600/20 active:scale-95 transition-all">
+                  <i data-lucide="camera" class="w-4 h-4"></i>
+                  <span>📷 ถ่ายภาพสด (กล้อง)</span>
+                </button>
+                <button type="button" id="btnPickGalleryBefore" class="touch-target px-3.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 font-bold text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition-all">
+                  <i data-lucide="image" class="w-4 h-4"></i>
+                  <span>📁 เลือกรูปจากอัลบั้ม / ไฟล์</span>
+                </button>
               </div>
-              <p class="text-xs font-bold text-slate-700 dark:text-slate-200">แตะเพื่อถ่ายรูป หรือเลือกรูปจากอัลบั้ม</p>
-              <p class="text-[11px] text-slate-400 mt-0.5">รองรับไฟล์ JPG, PNG, และ HEIC จาก iPhone</p>
+              <p class="text-[11px] text-slate-400">รองรับไฟล์ JPG, PNG, HEIC จาก iPhone / อัลบั้ม / ไฟล์ในเครื่อง</p>
             </div>
 
             <div id="beforePhotoPreviewContainer" class="hidden relative rounded-xl overflow-hidden group">
@@ -1006,19 +1014,26 @@
               <span class="text-[10px] text-indigo-400 font-normal">อัปโหลดภาพเสร็จสิ้น</span>
             </div>
 
-            <div id="closureAfterDropzone" class="h-52 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 bg-slate-50 dark:bg-slate-800/40 p-2 flex flex-col items-center justify-center cursor-pointer transition-all relative overflow-hidden">
-              <input type="file" id="inputAfterPhoto" accept="image/*,.heic,.heif" capture="environment" class="hidden" />
+            <div id="closureAfterDropzone" class="h-52 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 bg-slate-50 dark:bg-slate-800/40 p-2 flex flex-col items-center justify-center transition-all relative overflow-hidden">
+              <input type="file" id="inputAfterCamera" accept="image/*,.heic,.heif" capture="environment" class="hidden" />
+              <input type="file" id="inputAfterGallery" accept="image/*,.heic,.heif,image/heic,image/jpeg,image/png,image/webp" class="hidden" />
               
-              <div id="closureAfterPlaceholder" class="text-center p-3">
-                <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto mb-2">
-                  <i data-lucide="camera-plus" class="w-5 h-5"></i>
+              <div id="closureAfterPlaceholder" class="text-center p-2 flex flex-col items-center justify-center">
+                <div class="flex items-center gap-2 mb-2">
+                  <button type="button" id="btnPickCameraAfter" class="touch-target px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all">
+                    <i data-lucide="camera" class="w-3.5 h-3.5"></i>
+                    <span>📷 ถ่ายรูป</span>
+                  </button>
+                  <button type="button" id="btnPickGalleryAfter" class="touch-target px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 font-bold text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all">
+                    <i data-lucide="image" class="w-3.5 h-3.5"></i>
+                    <span>📁 อัลบั้ม/ไฟล์</span>
+                  </button>
                 </div>
-                <p class="text-xs font-bold text-slate-700 dark:text-slate-200">ถ่ายรูปผลงานแล้วเสร็จ</p>
-                <p class="text-[10px] text-slate-400 mt-0.5">แตะเพื่อถ่ายรูปหรือเลือกรูป</p>
+                <p class="text-[10px] text-slate-400">เลือกภาพผลงานหลังแก้ไขเสร็จ</p>
               </div>
 
               <div id="closureAfterPreviewContainer" class="hidden w-full h-full relative group">
-                <img id="closureAfterImg" src="" alt="After Preview" class="w-full h-full object-cover rounded-xl" />
+                <img id="closureAfterImg" src="" alt="After Preview" class="w-full h-full object-contain rounded-xl" />
                 <button type="button" id="btnRemoveAfterPhoto" class="absolute top-2 right-2 p-1.5 rounded-full bg-red-600 text-white shadow-lg">
                   <i data-lucide="trash-2" class="w-4 h-4"></i>
                 </button>
@@ -2998,30 +3013,47 @@
         });
       });
 
-      // Before Photo Dropzone & Auto EXIF
-      const dropzone = document.getElementById('beforePhotoDropzone');
-      const inputBefore = document.getElementById('inputBeforePhoto');
-      dropzone.addEventListener('click', (e) => {
-        if (e.target.closest('#btnRemoveBeforePhoto')) return;
-        inputBefore.click();
+      // Before Photo Handlers (Camera & Gallery/Files)
+      const inputBeforeCam = document.getElementById('inputBeforeCamera');
+      const inputBeforeGal = document.getElementById('inputBeforeGallery');
+
+      document.getElementById('btnPickCameraBefore').addEventListener('click', (e) => {
+        e.stopPropagation();
+        inputBeforeCam.click();
       });
 
-      inputBefore.addEventListener('change', async (e) => {
-        if (e.target.files.length > 0) {
-          const file = e.target.files[0];
-          
-          const gps = await extractGpsFromPhoto(file);
-          if (gps) {
-            document.getElementById('formLat').value = gps.lat.toFixed(6);
-            document.getElementById('formLng').value = gps.lng.toFixed(6);
-            updateGpsStatusBadge(gps.lat, gps.lng, 'exif');
-          }
+      document.getElementById('btnPickGalleryBefore').addEventListener('click', (e) => {
+        e.stopPropagation();
+        inputBeforeGal.click();
+      });
 
-          const compressed = await compressImageFile(file);
-          AppState.tempBeforePhotoBase64 = compressed;
-          document.getElementById('beforePhotoPreview').src = compressed;
-          document.getElementById('beforePhotoPlaceholder').classList.add('hidden');
-          document.getElementById('beforePhotoPreviewContainer').classList.remove('hidden');
+      async function processBeforePhotoFile(file) {
+        if (!file) return;
+        const gps = await extractGpsFromPhoto(file);
+        if (gps) {
+          document.getElementById('formLat').value = gps.lat.toFixed(6);
+          document.getElementById('formLng').value = gps.lng.toFixed(6);
+          updateGpsStatusBadge(gps.lat, gps.lng, 'exif');
+        }
+
+        const compressed = await compressImageFile(file);
+        AppState.tempBeforePhotoBase64 = compressed;
+        document.getElementById('beforePhotoPreview').src = compressed;
+        document.getElementById('beforePhotoPlaceholder').classList.add('hidden');
+        document.getElementById('beforePhotoPreviewContainer').classList.remove('hidden');
+      }
+
+      inputBeforeCam.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          processBeforePhotoFile(e.target.files[0]);
+          e.target.value = '';
+        }
+      });
+
+      inputBeforeGal.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          processBeforePhotoFile(e.target.files[0]);
+          e.target.value = '';
         }
       });
 
@@ -3031,7 +3063,8 @@
         document.getElementById('beforePhotoPreview').src = '';
         document.getElementById('beforePhotoPlaceholder').classList.remove('hidden');
         document.getElementById('beforePhotoPreviewContainer').classList.add('hidden');
-        inputBefore.value = '';
+        inputBeforeCam.value = '';
+        inputBeforeGal.value = '';
       });
 
       // Geolocation buttons in form
@@ -3143,22 +3176,40 @@
         document.getElementById('modalSurveyForm').classList.add('hidden');
       });
 
-      // Job Closure Form Submit (Save Locally + Broadcast Realtime)
-      const dropzoneAfter = document.getElementById('closureAfterDropzone');
-      const inputAfter = document.getElementById('inputAfterPhoto');
-      dropzoneAfter.addEventListener('click', (e) => {
-        if (e.target.closest('#btnRemoveAfterPhoto')) return;
-        inputAfter.click();
+      // Job Closure After Photo Handlers (Camera & Gallery/Files)
+      const inputAfterCam = document.getElementById('inputAfterCamera');
+      const inputAfterGal = document.getElementById('inputAfterGallery');
+
+      document.getElementById('btnPickCameraAfter').addEventListener('click', (e) => {
+        e.stopPropagation();
+        inputAfterCam.click();
       });
 
-      inputAfter.addEventListener('change', async (e) => {
+      document.getElementById('btnPickGalleryAfter').addEventListener('click', (e) => {
+        e.stopPropagation();
+        inputAfterGal.click();
+      });
+
+      async function processAfterPhotoFile(file) {
+        if (!file) return;
+        const compressed = await compressImageFile(file);
+        AppState.tempAfterPhotoBase64 = compressed;
+        document.getElementById('closureAfterImg').src = compressed;
+        document.getElementById('closureAfterPlaceholder').classList.add('hidden');
+        document.getElementById('closureAfterPreviewContainer').classList.remove('hidden');
+      }
+
+      inputAfterCam.addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
-          const file = e.target.files[0];
-          const compressed = await compressImageFile(file);
-          AppState.tempAfterPhotoBase64 = compressed;
-          document.getElementById('closureAfterImg').src = compressed;
-          document.getElementById('closureAfterPlaceholder').classList.add('hidden');
-          document.getElementById('closureAfterPreviewContainer').classList.remove('hidden');
+          processAfterPhotoFile(e.target.files[0]);
+          e.target.value = '';
+        }
+      });
+
+      inputAfterGal.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          processAfterPhotoFile(e.target.files[0]);
+          e.target.value = '';
         }
       });
 
@@ -3168,7 +3219,8 @@
         document.getElementById('closureAfterImg').src = '';
         document.getElementById('closureAfterPlaceholder').classList.remove('hidden');
         document.getElementById('closureAfterPreviewContainer').classList.add('hidden');
-        inputAfter.value = '';
+        inputAfterCam.value = '';
+        inputAfterGal.value = '';
       });
 
       document.getElementById('formJobClosure').addEventListener('submit', async (e) => {
