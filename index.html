@@ -1947,16 +1947,28 @@
         return `
           <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row gap-4 group">
             
-            <div class="relative sm:w-36 h-36 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 cursor-pointer" onclick="openJobClosureModal('${s.id}')">
-              <img src="${s.beforePhoto || ''}" alt="Before Photo" class="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-              <div class="absolute top-2 left-2">
-                <span class="px-2 py-0.5 rounded text-[10px] font-bold text-white shadow-sm ${isMV ? 'bg-indigo-600' : 'bg-cyan-600'}">
+            <!-- Photo Box with Full Ratio and Safe Fallback -->
+            <div class="relative sm:w-44 h-48 sm:h-36 rounded-xl overflow-hidden bg-slate-950 flex-shrink-0 cursor-pointer flex items-center justify-center border border-slate-800" onclick="openImageLightbox('${s.beforePhoto || s.afterPhoto || ''}', 'เสา ${s.poleId} (${s.voltage})')">
+              ${s.beforePhoto ? `
+                <img src="${s.beforePhoto}" alt="เสา ${s.poleId}" class="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+              ` : (s.afterPhoto ? `
+                <img src="${s.afterPhoto}" alt="เสา ${s.poleId}" class="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+              ` : `
+                <div class="flex flex-col items-center justify-center p-4 text-slate-500 text-xs gap-1.5 text-center">
+                  <div class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400">⚡</div>
+                  <span class="text-[10px] text-slate-400 font-medium">ไม่มีรูปภาพหน้างาน</span>
+                </div>
+              `)}
+              
+              <div class="absolute top-2 left-2 z-10 flex gap-1">
+                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold text-white shadow-md ${isMV ? 'bg-indigo-600' : 'bg-cyan-600'}">
                   ${s.voltage}
                 </span>
               </div>
+              
               ${s.afterPhoto ? `
-                <div class="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold text-[9px] flex items-center gap-0.5 shadow-md">
-                  <i data-lucide="check" class="w-2.5 h-2.5"></i>
+                <div class="absolute bottom-2 right-2 px-2 py-0.5 rounded-lg bg-emerald-600 text-white font-bold text-[10px] flex items-center gap-1 shadow-md z-10">
+                  <i data-lucide="check-circle" class="w-3 h-3"></i>
                   <span>มีภาพ After</span>
                 </div>
               ` : ''}
@@ -2856,18 +2868,72 @@
         btnViewCards.className = 'touch-target px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 text-slate-600 dark:text-slate-400 transition-all';
       });
 
-      // Mobile Bottom Nav Handlers
-      document.getElementById('mobNavProjects').addEventListener('click', () => {
-        document.getElementById('modalProjects').classList.remove('hidden');
-        renderProjectModal();
-      });
-      document.getElementById('mobNavMap').addEventListener('click', () => {
-        document.getElementById('rightMapContainer').scrollIntoView({ behavior: 'smooth' });
-      });
-      document.getElementById('mobNavNew').addEventListener('click', () => openSurveyModal(false));
-      document.getElementById('mobNavList').addEventListener('click', () => {
-        document.getElementById('leftContainer').scrollIntoView({ behavior: 'smooth' });
-      });
+    /* =========================================================
+       MOBILE FULLSCREEN VIEW CONTROLLER
+       ========================================================= */
+    function switchMobileView(tab) {
+      const leftPanel = document.getElementById('leftContainer');
+      const rightPanel = document.getElementById('rightMapContainer');
+      const btnMap = document.getElementById('mobNavMap');
+      const btnList = document.getElementById('mobNavList');
+
+      if (!leftPanel || !rightPanel) return;
+
+      if (window.innerWidth < 1024) {
+        if (tab === 'map') {
+          leftPanel.classList.add('hidden');
+          leftPanel.classList.remove('flex');
+          rightPanel.classList.remove('hidden');
+          rightPanel.classList.add('flex');
+          rightPanel.style.minHeight = 'calc(100vh - 140px)';
+
+          if (btnMap) btnMap.className = 'touch-target flex flex-col items-center justify-center py-1 text-indigo-600 dark:text-indigo-400 font-bold';
+          if (btnList) btnList.className = 'touch-target flex flex-col items-center justify-center py-1 text-slate-500 dark:text-slate-400 hover:text-indigo-600';
+
+          setTimeout(() => {
+            if (AppState.map) {
+              AppState.map.invalidateSize();
+              fitMapToMarkers();
+            }
+          }, 150);
+        } else if (tab === 'list') {
+          rightPanel.classList.add('hidden');
+          rightPanel.classList.remove('flex');
+          leftPanel.classList.remove('hidden');
+          leftPanel.classList.add('flex');
+
+          if (btnList) btnList.className = 'touch-target flex flex-col items-center justify-center py-1 text-indigo-600 dark:text-indigo-400 font-bold';
+          if (btnMap) btnMap.className = 'touch-target flex flex-col items-center justify-center py-1 text-slate-500 dark:text-slate-400 hover:text-indigo-600';
+        }
+      } else {
+        // Desktop: Always show both
+        leftPanel.classList.remove('hidden');
+        leftPanel.classList.add('flex');
+        rightPanel.classList.remove('hidden');
+        rightPanel.classList.add('flex');
+        rightPanel.style.minHeight = '';
+      }
+    }
+
+    // Window resize handler for responsive split screen
+    window.addEventListener('resize', () => {
+      if (window.innerWidth >= 1024) {
+        const leftPanel = document.getElementById('leftContainer');
+        const rightPanel = document.getElementById('rightMapContainer');
+        if (leftPanel) { leftPanel.classList.remove('hidden'); leftPanel.classList.add('flex'); }
+        if (rightPanel) { rightPanel.classList.remove('hidden'); rightPanel.classList.add('flex'); rightPanel.style.minHeight = ''; }
+        if (AppState.map) AppState.map.invalidateSize();
+      }
+    });
+
+    // Mobile Bottom Nav Handlers
+    document.getElementById('mobNavProjects').addEventListener('click', () => {
+      document.getElementById('modalProjects').classList.remove('hidden');
+      renderProjectModal();
+    });
+    document.getElementById('mobNavMap').addEventListener('click', () => switchMobileView('map'));
+    document.getElementById('mobNavNew').addEventListener('click', () => openSurveyModal(false));
+    document.getElementById('mobNavList').addEventListener('click', () => switchMobileView('list'));
 
       // Header Buttons
       document.getElementById('btnHeaderNewSurvey').addEventListener('click', () => openSurveyModal(false));
