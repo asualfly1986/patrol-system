@@ -1138,8 +1138,8 @@
 
       // Realtime State
       clientId: 'crew-' + Math.random().toString(36).substr(2, 6),
-      roomCode: localStorage.getItem('patrol_room') || 'PEA-FEEDER-01',
-      crewName: localStorage.getItem('patrol_crew') || 'ทีมฮอทไลน์ 01',
+      roomCode: (new URLSearchParams(window.location.search).get('room') || localStorage.getItem('patrol_room') || 'PEA-FEEDER-01').trim().toUpperCase(),
+      crewName: (new URLSearchParams(window.location.search).get('crew') || localStorage.getItem('patrol_crew') || 'ทีมฮอทไลน์ 01').trim(),
       realtimeStatus: 'disconnected', // 'connected' | 'connecting' | 'disconnected'
       mqttClient: null,
       broadcastChannel: null,
@@ -2797,13 +2797,30 @@
         showRealtimeToast(`📡 เข้าร่วมห้องเรียลไทม์ [${room}] เรียบร้อยแล้ว`, 'success');
       });
 
-      // Share Link to Room
-      document.getElementById('btnShareRealtimeLink').addEventListener('click', () => {
-        const url = window.location.origin + window.location.pathname + '?room=' + encodeURIComponent(AppState.roomCode);
+      // Share Link to Room (Native Share Sheet + Fallback to Copy)
+      document.getElementById('btnShareRealtimeLink').addEventListener('click', async () => {
+        const targetRoom = document.getElementById('inputRealtimeRoom').value.trim() || AppState.roomCode;
+        const url = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(targetRoom)}`;
+        
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: `PATROL MV & LV (ห้อง: ${targetRoom})`,
+              text: `เข้าทำงานสำรวจและติดตามบำรุงรักษาระบบจำหน่าย ห้อง ${targetRoom}`,
+              url: url
+            });
+            showRealtimeToast('📲 แชร์ลิงก์ห้องทำงานสำเร็จแล้ว', 'success');
+            return;
+          } catch (err) {
+            // Cancelled or fallback to copy
+          }
+        }
+
         navigator.clipboard.writeText(url).then(() => {
-          showRealtimeToast('📋 คัดลอกลิงก์ห้องเรียลไทม์แล้ว ส่งต่อให้ทีมงานได้ทันที');
+          showRealtimeToast(`📋 คัดลอกลิงก์ห้อง [${targetRoom}] แล้ว ส่งต่อใน LINE ได้ทันที`, 'success');
+          alert(`📋 คัดลอกลิงก์สำเร็จแล้ว!\n\nลิงก์ห้อง ${targetRoom}:\n${url}\n\nส่งลิงก์นี้เข้ากลุ่ม LINE ให้ทีมงานแตะเข้าห้องได้ทันทีครับ`);
         }).catch(() => {
-          alert('ลิงก์ห้องของคุณ: ' + url);
+          prompt(`คัดลอกลิงก์ห้อง ${targetRoom}:`, url);
         });
       });
 
